@@ -56,6 +56,8 @@ int tp_chan_recv_timedwait(tp_chan_t *c, void **v, int msec);
 
 int tp_chan_count(tp_chan_t *c);
 
+int tp_chan_wake(tp_chan_t *c);
+
 int tp_chan_free(tp_chan_t *c);
 /*
  * log module
@@ -139,9 +141,11 @@ void tp_hash_free(tp_hash_t *hash);
 #define TP_TASK                      (1 << 1)
 #define TP_MOD_PRODUCER              (1 << 2)
 #define TP_MOD_CONSUMER              (1 << 3)
-#define TP_MOD_PRODUCER_EMPTY        (1 << 4)
-#define TP_MOD_PRODUCER_GFUNC_EMPTY  (1 << 5)
-#define TP_MOD_PRODUCER_GINIT_FAIL   (1 << 6)
+#define TP_MOD_CONSUMER_EXIT         (1 << 4)
+#define TP_MOD_PRODUCER_EMPTY        (1 << 5)
+#define TP_MOD_PRODUCER_GFUNC_EMPTY  (1 << 6)
+#define TP_MOD_PRODUCER_GINIT_FAIL   (1 << 7)
+#define TP_MOD_PRODUCER_EXIT         (1 << 8)
 
 /*
  * threadpool module

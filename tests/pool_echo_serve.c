@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "threadpool.h"
 
@@ -78,6 +80,32 @@ int producer_create(tp_vtable_child_arg_t *c) {
     return 0;
 }
 
+static int set_fl(int fd, int flags) {
+    int val;
+    val = fcntl(fd, F_GETFL, 0);
+    if (val == -1) {
+        perror("fcntl F_GETFL");
+        return -1;
+    }
+    val |= flags;
+    if (fcntl(fd, F_SETFL, val) == -1) {
+        perror("fcntl F_SETFL");
+        return -1;
+    }
+    return 0;
+}
+
+static int accept_wait(int listen_fd) {
+    fd_set rfd;
+    struct timeval tv;
+    tv.tv_sec  = 5;
+    tv.tv_usec = 0;
+
+    FD_ZERO(&rfd);
+    FD_SET(listen_fd, &rfd);
+    return select(listen_fd + 1, &rfd, NULL, NULL, &tv);
+}
+
 /* listening socket */
 int producer_process(tp_vtable_child_arg_t *arg) {
     tp_vtable_global_arg_t *g         = arg->global;
@@ -86,28 +114,57 @@ int producer_process(tp_vtable_child_arg_t *arg) {
     int                     listen_fd = -1;
     int                     connfd    = -1;
     uint64_t                id        = 0;
+    int                     rv        = 0;
 
     tp_log(mylog, TP_INFO, "run process start user data:%s\n",
           (char *)arg->child_arg);
 
     listen_fd = listen_new(0, htons(TP_PORT));
+    if (listen_fd == -1) {
+        tp_log(mylog, TP_ERROR, "listen new fd fail:%s\n",
+              strerror(errno));
+        return -1;
+    }
 
+    set_fl(listen_fd, O_NONBLOCK);
     for (;;) {
         get_ns(&id);
-        connfd = accept(listen_fd, NULL, NULL);
-        if (connfd == -1) {
-            tp_log(mylog, TP_INFO, "accept error:%s\n", strerror(errno));
-            break;
+        rv = accept_wait(listen_fd);
+        if (rv == -1) {
+            tp_log(mylog, TP_ERROR, "accept_wait error:%s", strerror(errno));
+            exit(1);
+        } else if (rv == 0){
+            tp_chan_wake(chan);
+            tp_log(mylog, TP_WARN, "accept_wait timeout\n");
+            /*
+             * This is just a test program, where quit. 
+             * Real business server is generally not quit
+             */
+            goto done;
+        } else {
+            connfd = accept(listen_fd, NULL, NULL);
+            if (connfd == -1) {
+                tp_log(mylog, TP_INFO, "accept error:%s\n", strerror(errno));
+                break;
+            }
         }
 
-        tp_log(mylog, TP_INFO, "accept send fd before:%lu\n", id);
-        if (tp_chan_send_timedwait(chan, (void *)(intptr_t)connfd, -1) != 0) {
+        tp_log(mylog, TP_DEBUG, "accept send fd before:%lu\n", id);
+        if ((rv = tp_chan_send_timedwait(chan, (void *)(intptr_t)connfd, -1)) != 0) {
+            if (rv == TP_SHUTDOWN) {
+                goto done;
+            }
+
             tp_log(mylog, TP_WARN, "send data error\n");
         }
-        tp_log(mylog, TP_INFO, "accept send fd after:%lu\n", id);
+        tp_log(mylog, TP_DEBUG, "accept send fd after:%lu\n", id);
     }
 
     return 0;
+
+done:
+    close(listen_fd);
+    return 1;
 }
 
 void producer_destroy(tp_vtable_child_arg_t *arg) {
@@ -118,6 +175,7 @@ void producer_global_destroy(tp_vtable_global_arg_t *g) {
     echo_server_t *s = g->producer_arg;
     tp_chan_free(s->chan);
     free(s);
+    tp_log(mylog, TP_INFO, "%s\n", __func__);
 }
 
 /* from the client to read and write data back */
@@ -134,22 +192,23 @@ int consumer_process(tp_vtable_child_arg_t *arg) {
     for (;;) {
         val = (void *)(intptr_t)-1;
         get_ns(&id);
-        tp_log(mylog, TP_INFO, "%ld:%s:id(%ld) recv fd before\n", pthread_self(), __func__, id);
+        tp_log(mylog, TP_DEBUG, "%ld:%s:id(%ld) recv fd before\n", pthread_self(), __func__, id);
         rv = tp_chan_recv_timedwait(chan, &val, -1);
-        if (rv != 0) {
-            break;
+        if (rv == TP_SHUTDOWN) {
+            tp_log(mylog, TP_INFO, "%ld:%s:id(%ld) shutdown\n", pthread_self(), __func__, id);
+            return 1;
         }
 
-        tp_log(mylog, TP_INFO, "%ld:%s:id(%ld) recv data before\n", pthread_self(), __func__, id);
+        tp_log(mylog, TP_DEBUG, "%ld:%s:id(%ld) recv data before\n", pthread_self(), __func__, id);
         for (;;) {
             rv = read((intptr_t)val, buf, sizeof(buf));
             if (rv <= 0) {
                 break;
             }
-            tp_log(mylog, TP_INFO, "%ld:%s:%d:rv(%d)\n", pthread_self(), __func__, *(int *)buf, rv);
+            tp_log(mylog, TP_DEBUG, "%ld:%s:%d:rv(%d)\n", pthread_self(), __func__, *(int *)buf, rv);
             send((intptr_t)val, buf, rv, MSG_NOSIGNAL);
         }
-        tp_log(mylog, TP_INFO, "%ld:%s:id(%ld) recv data after\n", pthread_self(), __func__, id);
+        tp_log(mylog, TP_DEBUG, "%ld:%s:id(%ld) recv data after\n", pthread_self(), __func__, id);
         close((intptr_t)val);
     }
     printf("%s %ldbye bye\n", __func__, pthread_self());
@@ -162,7 +221,7 @@ static tp_plugin_t producer = {
         .create = producer_create,
         .process = producer_process,
         .destroy = producer_destroy,
-        .global_destroy = NULL,
+        .global_destroy = producer_global_destroy,
     },
     .user_data   = "accept",
     .plugin_name = TP_MODULE_NAME,
@@ -180,7 +239,7 @@ static tp_plugin_t consumer = {
     .plugin_name = TP_MODULE_NAME,
 };
 
-#define TOTAL 10000
+#define TOTAL 100
 void echo_client(void *arg) {
     int s, r, n;
     struct sockaddr_in client;
@@ -188,7 +247,7 @@ void echo_client(void *arg) {
 
     get_ns(&id);
 
-    tp_log(mylog, TP_INFO, "client start id:%lu\n", id);
+    tp_log(mylog, TP_DEBUG, "client start id:%lu\n", id);
     s = socket(AF_INET, SOCK_STREAM, 0);
     assert(s != -1);
 
@@ -207,13 +266,13 @@ void echo_client(void *arg) {
         goto fail;
     }
 
-    tp_log(mylog, TP_INFO, "client connect ok:%lu\n", id);
+    tp_log(mylog, TP_DEBUG, "client connect ok:%lu\n", id);
     /*n = __sync_add_and_fetch(&count, 1);*/
     n = (intptr_t)arg;
     send(s, &n, sizeof(n), MSG_NOSIGNAL);
 fail:
     close(s);
-    tp_log(mylog, TP_INFO, "client end id:%lu\n", id);
+    tp_log(mylog, TP_DEBUG, "client end id:%lu\n", id);
 }
 
 void start_client(tp_pool_t *pool) {
@@ -230,14 +289,11 @@ void start_client(tp_pool_t *pool) {
 
 int main() {
 
-    /*
-     * begin to create 5 threads,
-     * you can only create a maximum of 30 threads
-     */
     tp_pool_t *pool, *client_pool;
 
     mylog = tp_log_new(TP_INFO, "echo client", TP_LOG_LOCK);
-    pool = tp_pool_create(30, 30, TP_NULL);
+    pool = tp_pool_create(5 /*max thread number*/, 5/* chan size */, 
+            1/* min threads */, TP_AUTO_ADD | TP_AUTO_DEL, TP_NULL);
     assert(pool != NULL);
 
     client_pool = tp_pool_create(30, 30, TP_NULL);
@@ -254,5 +310,6 @@ int main() {
 
     tp_pool_destroy(client_pool);
     tp_pool_destroy(pool);
+    tp_log_free(mylog);
     return 0;
 }

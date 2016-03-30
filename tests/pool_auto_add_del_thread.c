@@ -32,7 +32,7 @@ int main() {
     int rv;
     tp_pool_t *pool = NULL;
 
-    pool = tp_pool_create(MAX_THREADS, MAX_THREADS * 0.8, MIN_THREADS,
+    pool = tp_pool_create(MAX_THREADS, MAX_THREADS * 0.8 /* chan size */, MIN_THREADS,
                           TP_AUTO_ADD | TP_AUTO_DEL,500/*500 ms*/, TP_NULL);
 
     assert(pool != NULL);

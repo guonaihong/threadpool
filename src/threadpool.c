@@ -146,6 +146,11 @@ int tp_chan_send_timedwait(tp_chan_t *c, void *v, int msec) {
     while ((c->nput == c->nget) && (c->nput_laps != c->nget_laps)) {
         /* tp_chan_dump(c, "full"); */
 
+        if (ATOMIC_LOAD(&c->exit) == TP_SHUTDOWN) {
+            err = TP_SHUTDOWN;
+            goto fail;
+        }
+
         err = tp_chan_wait(&c->wwait, &c->l, msec);
 
         if (err != 0) {
@@ -226,6 +231,7 @@ int tp_chan_wake(tp_chan_t *c) {
 
     ATOMIC_ADD(&c->exit, TP_SHUTDOWN);
     pthread_cond_broadcast(&c->rwait);
+    pthread_cond_broadcast(&c->wwait);
     return 0;
 }
 
@@ -647,6 +653,7 @@ void tp_hash_free(tp_hash_t *hash) {
     free(hash);
 }
 
+static void plugin_arg_free(void *arg);
 static void tp_pool_plugin_main(void *arg);
 
 struct tp_pool_t {
@@ -786,14 +793,15 @@ static void *tp_pool_thread(void *arg) {
 
             if (task->type & TP_TASK) {
                 task->function(task->arg);
+                task_arg_free((void *)task);
             } else {
                 tp_pool_plugin_main((tp_plugin_t *)task);
+                plugin_arg_free((void *)task);
             }
 
             /* pool->run_threads-- */
             ATOMIC_DEC(&pool->run_threads);
 
-            task_arg_free((void *)task);
             countdown = 3;
             continue;
         }
@@ -917,6 +925,10 @@ fail1: pthread_mutex_destroy(&pool->list_mutex);
        return err;
 }
 
+static void myfree(void *val) {
+    free(val);
+}
+
 /* tp_pool_t *tp_pool_create(int max_thread, int chan_size,
  *                           int flags, int min_threads, int ms) */
 tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...) {
@@ -937,7 +949,7 @@ tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...) {
         goto fail;
     }
 
-    if ((pool->plugins = tp_hash_new(15, NULL)) == NULL) {
+    if ((pool->plugins = tp_hash_new(15, myfree)) == NULL) {
         goto fail;
     }
 
@@ -1083,11 +1095,11 @@ int tp_pool_destroy(tp_pool_t *pool) {
 
     free(pool->list_thread);
 
-    pthread_cond_destroy(&pool->pool_wait);
     pthread_mutex_destroy(&pool->l);
     pthread_cond_destroy(&pool->new_wait);
     pthread_cond_destroy(&pool->free_wait);
     pthread_mutex_destroy(&pool->plugin_lock);
+    pthread_mutex_destroy(&pool->list_mutex);
     pthread_cond_destroy(&pool->pool_wait);
 
     tp_chan_free(pool->task_chan);
@@ -1121,7 +1133,7 @@ static tp_plugin_arg_t *plugin_arg_new(tp_pool_t *pool, tp_plugin_t *plugin, int
     return arg;
 }
 
-static void plugin_arg_free(tp_plugin_arg_t *arg) {
+static void plugin_arg_free(void *arg) {
     free(arg);
 }
 
@@ -1204,7 +1216,8 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
         g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g != NULL) {
             /* produces to produce fail */
-            if (g->status & TP_MOD_PRODUCER_GINIT_FAIL) {
+            if ((g->status & TP_MOD_PRODUCER_GINIT_FAIL)
+                || (g->status & TP_MOD_PRODUCER_EXIT)) {
                 err = -1;
                 goto cexit;
             }
@@ -1215,15 +1228,13 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
     }
 
 cinit:
-    if (p->vtable.global_init) {
-        if (g->c_ref_count == 0) {
-            err = p->vtable.global_init(g);
-            if (err != 0) {
-                goto cexit;
-            }
+    if (p->vtable.global_init && g->c_ref_count == 0) {
+        err = p->vtable.global_init(g);
+        if (err != 0) {
+            goto cexit;
         }
-        g->c_ref_count++;
     }
+    g->c_ref_count++;
 
 cexit:
     a->g = g;
@@ -1273,9 +1284,11 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
     tp_vtable_global_arg_t *g = NULL;
     tp_plugin_t            *p = a->plugin;
 
-    if (p->vtable.global_destroy) {
-        return;
-    }
+    /*global_init and global_destroy together to have a value or no value */
+    assert((p->vtable.global_init == NULL &&
+           p->vtable.global_destroy == NULL) ||
+           (p->vtable.global_init != NULL &&
+           p->vtable.global_destroy != NULL));
 
     pthread_mutex_lock(&pool->plugin_lock);
     g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
@@ -1287,22 +1300,28 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
         g->c_ref_count = g->c_ref_count > 0 ? --g->c_ref_count : 0;
         if (g->c_ref_count == 0) {
             pthread_cond_signal(&pool->free_wait);
-            p->vtable.global_destroy(g);
-            if (g->status & TP_MOD_PRODUCER_EMPTY) {
-                tp_hash_del(pool->plugins, p->plugin_name, TP_KEY_STR);
-                free(g);
+            if (p->vtable.global_destroy) {
+                p->vtable.global_destroy(g);
+            }
+
+            if (g->status & TP_MOD_CONSUMER_EXIT) {
+                g->status |= TP_MOD_CONSUMER_EXIT;
             }
         }
 
     } else if (a->type == TP_MOD_PRODUCER){
         g->p_ref_count = g->p_ref_count > 0 ? --g->p_ref_count : 0;
         if (g->p_ref_count == 0) {
-            while (g->c_ref_count != 0) {
+            while (g->c_ref_count > 0) {
                 pthread_cond_wait(&pool->free_wait, &pool->plugin_lock);
             }
-            p->vtable.global_destroy(g);
-            tp_hash_del(pool->plugins, p->plugin_name, TP_KEY_STR);
-            free(g);
+            if (p->vtable.global_destroy) {
+                p->vtable.global_destroy(g);
+            }
+
+            if (g->status & TP_MOD_PRODUCER_EXIT) {
+                g->status |= TP_MOD_PRODUCER_EXIT;
+            }
         }
     }
 
@@ -1318,7 +1337,7 @@ static void tp_pool_plugin_main(void *arg) {
     pool = a->self_pool;
 
     if (a->plugin->vtable.process == NULL) {
-        goto done;
+        return;
     }
 
     if (a->type & TP_MOD_CONSUMER) {
@@ -1330,8 +1349,6 @@ static void tp_pool_plugin_main(void *arg) {
     tp_pool_plugin_child_loop(a);
 
     tp_pool_plugin_global_destroy(a);
-
-done: plugin_arg_free(a);
 }
 
 int tp_pool_plugin_producer_consumer_add(tp_pool_t   *pool,
