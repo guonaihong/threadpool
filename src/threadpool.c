@@ -1081,8 +1081,6 @@ int tp_pool_destroy(tp_pool_t *pool) {
         return -1;
     }
 
-    pthread_mutex_destroy(&pool->list_mutex);
-
     tp_chan_wake(pool->task_chan);
     if (pool->list_thread != NULL) {
         TP_LIST_FOREACH_SAFE(node, tmp, &pool->list_thread->list) {

@@ -6,28 +6,36 @@
 #include "threadpool.h"
 
 #define TOTAL 100000
+
 static int total;
+
 void print1(void *arg) {
-    printf("####### ni hao:%s\n", (char *)arg);
-    __sync_add_and_fetch(&total, 1);
+    printf("hello::%s\n", (char *)arg);
+    __sync_add_and_fetch(&total, 1);/* ++total */
 }
 
 void print2(void *arg) {
-    printf("####### ni hao:%s\n", (char *)arg);
-    __sync_add_and_fetch(&total, 1);
+    printf("world::%s\n", (char *)arg);
+    __sync_add_and_fetch(&total, 1);/* ++total */
 }
 
-void *func3(void *arg) {
+void *start_add_task(void *arg) {
     tp_pool_t *pool = (tp_pool_t *)arg;
 
     int i;
     for (i = 0; i < TOTAL; i++) {
+
+        /* Add tasks to the thread pool */
         if (tp_pool_add(pool, print1, "print1") != 0) {
-            printf("send print1 (%d) timeout\n", i);
+            printf("(%d) add print1 function to the thread pool timeout\n",
+                   i);
             exit(0);
         }
+
+        /* Add tasks to the thread pool */
         if (tp_pool_add(pool, print2, "print2") != 0) {
-            printf("send print2 (%d) timeout\n", i);
+            printf("(%d) add print2 function to the thread pool timeout\n",
+                   i);
             exit(0);
         }
     }
@@ -35,13 +43,15 @@ void *func3(void *arg) {
 }
 
 int main() {
-    tp_pool_t *pool = tp_pool_create(10, 10, TP_NULL);
+    tp_pool_t *pool = tp_pool_create(10/*Number of threads*/,
+                                     10/*The maximum capacity of the chan*/,
+                                     TP_NULL);
 
     assert(pool != NULL);
 
     fprintf(stderr, "pool create ok\n");
 
-    func3(pool);
+    start_add_task(pool);
 
     tp_pool_wait(pool, TP_FAST);
     fprintf(stderr, "wait after\n");
