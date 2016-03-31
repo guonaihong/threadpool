@@ -22,20 +22,22 @@ void print2(void *arg) {
 void *start_add_task(void *arg) {
     tp_pool_t *pool = (tp_pool_t *)arg;
 
-    int i;
+    int i, rv;
     for (i = 0; i < TOTAL; i++) {
 
         /* Add tasks to the thread pool */
-        if (tp_pool_add(pool, print1, "print1") != 0) {
-            printf("(%d) add print1 function to the thread pool timeout\n",
-                   i);
+        rv = tp_pool_add(pool, print1, "print1");
+        if (rv != 0) {
+            printf("id(%d) rv(%d) add print1 function to the thread pool timeout\n",
+                   i, rv);
             exit(0);
         }
 
         /* Add tasks to the thread pool */
-        if (tp_pool_add(pool, print2, "print2") != 0) {
-            printf("(%d) add print2 function to the thread pool timeout\n",
-                   i);
+        rv = tp_pool_add(pool, print2, "print2");
+        if (rv != 0) {
+            printf("id(%d) rv(%d) add print2 function to the thread pool timeout\n",
+                   i, rv);
             exit(0);
         }
     }

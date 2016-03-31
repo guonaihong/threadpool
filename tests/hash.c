@@ -15,17 +15,25 @@ int main() {
 
     assert(hash != NULL);
 
+    /* set the value to the hash table */
     tp_hash_put(hash, "hello", TP_KEY_STR, strdup("world"));
     tp_hash_put(hash, "hello1", TP_KEY_STR, strdup("world1"));
     tp_hash_put(hash, "hello2", TP_KEY_STR, strdup("world2"));
     tp_hash_put(hash, "hello3", TP_KEY_STR, strdup("world3"));
     tp_hash_put(hash, "hello4", TP_KEY_STR, strdup("world4"));
 
+    /*get value from the hash table with the key */
     val = tp_hash_get(hash, "hello", TP_KEY_STR);
-    printf("%s\n", (char *)val);
-#if 0
+    if (val != NULL) {
+        printf("%s\n", (char *)val);
+    }
+
+    /* To remove a value from the hash table based on key */
     val = tp_hash_del(hash, "hello", TP_KEY_STR);
-    free(val);
+    if (val != NULL) {
+        free(val);
+    }
+#if 0
     val = tp_hash_del(hash, "hello0", TP_KEY_STR);
     free(val);
     val = tp_hash_del(hash, "hello2", TP_KEY_STR);
@@ -37,9 +45,9 @@ int main() {
 
     printf("del after \n");
     tp_hash_dump_str(hash);
-
 #endif
 
+    /* destroy hash table */
     tp_hash_free(hash);
     return 0;
 }

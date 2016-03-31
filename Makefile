@@ -6,14 +6,14 @@ LDFLAGS += -g
 ifdef DEBUG
 endif
 
-TARGETS = tests/log tests/chan tests/list tests/api tests/pool_easy tests/pool_auto_add_del_thread \
+TARGETS = tests/log tests/chan tests/list tests/api tests/demo_pool_easy tests/pool_auto_add_del_thread \
 		  tests/hash tests/pool_echo_serve
 
 all: $(TARGETS)
 
 tests/log: tests/log.o src/threadpool.o
 tests/chan: tests/chan.o src/threadpool.o
-tests/pool_easy: tests/pool_easy.o src/threadpool.o
+tests/demo_pool_easy: tests/demo_pool_easy.o src/threadpool.o
 tests/pool_auto_add_del_thread: tests/pool_auto_add_del_thread.o src/threadpool.o
 tests/pool_echo_serve: tests/pool_echo_serve.o src/threadpool.o
 tests/list: tests/list.o src/threadpool.o
@@ -29,4 +29,7 @@ clean:
 
 test:
 	./tests/log
+	./tests/list
+	./tests/hash
+	./tests/chan
 

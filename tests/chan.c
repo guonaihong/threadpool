@@ -3,90 +3,65 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <errno.h>
 #include "threadpool.h"
 
-/* test sendtimeout begin */
-void *chan_recv_pause(void *arg) {
-    tp_chan_t *chan = (tp_chan_t *)arg;
-    void *v;
-    int   err;
-
-    sleep(2);
-    if ((err = tp_chan_recv_timedwait(chan, &v, 1000)) != 0) {
-        printf("recv:%s\n", strerror(err));
-        return 0;
-    }
-
-    printf("recv %ld\n", (intptr_t)v);
-    return (void *)0;
-}
-
-void tst_chan_send_timeout() {
-    int size = 5;
-    tp_chan_t *chan = tp_chan_new(size);
-    int i;
-    pthread_t tid;
-
-    pthread_create(&tid, NULL, chan_recv_pause, chan);
-    for (i = 1; i < 10; i++) {
-        int err = tp_chan_send_timedwait(chan, (void *)(intptr_t)i, 10);
-        /*send timeout*/
-        if (err != 0) {
-            ;
-        }
-
-        printf("send (%d) %s\n", i, (err == 0) ? "ok" : strerror(err));
-    }
-
-    printf("end send\n");
-    pthread_join(tid, NULL);
-}
-/* test sendtimeout end */
-
-/* test recvtimeout begin */
-void *chan_send(void *arg) {
-    int i;
-    tp_chan_t *chan = (tp_chan_t *)arg;
+static void tst_chan_send_timeout() {
+    tp_chan_t *chan = tp_chan_new(5);
+    char      *p    = NULL;
+    void      *v    = NULL;
+    int        i, err;
 
     for (i = 1; i < 10; i++) {
-        int err = tp_chan_send_timedwait(chan, (void *)(intptr_t)i, 1000);
+        p = "ok";
+        err = tp_chan_send_timedwait(chan, (void *)(intptr_t)i, 10/* ms */);
         if (err != 0) {
-            ;
+            p = "unknown error";
+            if (err == ETIMEDOUT) {
+                p = "send timeout";
+            }
         }
-        printf("send (%d) %s\n", i, (err == 0) ? "ok" : strerror(err));
 
-        sleep(2);
+        printf("(tst send timeout)send %d message, the value of %d %s\n",
+               i, i, p);
     }
 
-    return (void *)0;
+    printf("end send...bye bye\n");
+
+    while (tp_chan_count(chan) > 0) {
+        tp_chan_recv_timedwait(chan, &v, 1);
+    }
+    tp_chan_free(chan);
 }
 
-void tst_chan_recv_timeout() {
-    int size = 5;
+static void tst_chan_recv_timeout() {
     int i, err;
-    tp_chan_t *chan = tp_chan_new(size);
-    pthread_t tid;
-    void *v;
-
-    pthread_create(&tid, NULL, chan_send, chan);
+    tp_chan_t *chan = tp_chan_new(5);
+    void      *v;
+    char      *p;
 
     for (i = 0; i < 10; i++) {
-        if ((err = tp_chan_recv_timedwait(chan, &v, 3000)) != 0) {
-            printf("recv:%s\n", strerror(err));
-        } else {
-            printf("recv::%ld\n", (intptr_t)v);
+        p = "ok";
+        err = tp_chan_recv_timedwait(chan, &v, 10);
+        if (err != 0) {
+            p = "unknown error";
+            if (err == ETIMEDOUT) {
+                p = "recv timeout";
+            }
         }
+        printf("(tst recv timeout)recv %d message, %s\n",
+               i, p);
     }
 
-    printf("end recv\n");
-    pthread_join(tid, NULL);
+    printf("end recv...bye bye\n");
+    tp_chan_free(chan);
 }
-/* test recvtimeout end */
 
 int main() {
 
     tst_chan_send_timeout();
 
     tst_chan_recv_timeout();
+
     return 0;
 }

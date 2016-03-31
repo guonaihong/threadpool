@@ -225,6 +225,10 @@ int tp_chan_count(tp_chan_t *c) {
 }
 
 int tp_chan_wake(tp_chan_t *c) {
+    if (c == NULL) {
+        return -1;
+    }
+
     if (tp_chan_count(c) > 0) {
         return -1;
     }
@@ -240,10 +244,7 @@ int tp_chan_free(tp_chan_t *c) {
         return -1;
     }
 
-    if (tp_chan_count(c) > 0) {
-        printf("chan is not empty\n");
-        return -1;
-    }
+    assert(tp_chan_count(c) <= 0);
 
     pthread_mutex_destroy(&c->l);
     pthread_mutex_destroy(&c->rl);
