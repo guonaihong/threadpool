@@ -1,5 +1,11 @@
 CFLAGS = -D_REENTRANT -Wall -pedantic -Isrc
+
+OSNAME = $(shell uname)
+ifeq ($(OSNAME), Linux)
 LDLIBS = -lpthread -lm -lrt
+else
+LDFLAGS = -lpthread -lm
+endif
 
 CFLAGS += -g
 LDFLAGS += -g

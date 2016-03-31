@@ -25,12 +25,21 @@
 
 #define TP_MODULE_NAME "echo server"
 
+#ifndef MSG_NOSIGNAL
+# define MSG_NOSIGNAL 0
+#endif
 tp_log_t *mylog;
 static void get_ns(uint64_t *u64) {
+#ifdef __linux__
     struct timespec t;
     int rv = 0;
     rv = clock_gettime(CLOCK_REALTIME, &t);
     *u64 = (rv == 0) ? (t.tv_sec * 1000 * 1000 * 1000 + t.tv_nsec) : 0;
+#endif
+
+#ifdef __APPLE__
+    *u64 = 0;
+#endif
 }
 
 int listen_new(unsigned ip, unsigned short port) {
@@ -211,7 +220,7 @@ int consumer_process(tp_vtable_child_arg_t *arg) {
         tp_log(mylog, TP_DEBUG, "%ld:%s:id(%ld) recv data after\n", pthread_self(), __func__, id);
         close((intptr_t)val);
     }
-    printf("%s %ldbye bye\n", __func__, pthread_self());
+    printf("%s %ldbye bye\n", __func__, (long)pthread_self());
     return 0;
 }
 

@@ -14,13 +14,13 @@
 
 static void ni(void *arg) {
     printf("tid %ld 1.hello world:%s\n", 
-          pthread_self(), arg == NULL ? "default" : (char *)arg);
+          (long)pthread_self(), arg == NULL ? "default" : (char *)arg);
     pause();
 }
 
 static void hao(void *arg) {
     printf("tid %ld 2.hello world:%s\n", 
-          pthread_self(), arg == NULL ? "default" : (char *)arg);
+          (long)pthread_self(), arg == NULL ? "default" : (char *)arg);
 }
 
 void wc_threadnum() {
@@ -38,14 +38,14 @@ int main() {
     assert(pool != NULL);
 
     /* create threads started min_threads */
-    wc_threadnum(STR_WC);
+    wc_threadnum();
     printf("add task before\n");
     for (i = 0; i < CHAN_SIZE / 2; i++) {
         if (tp_pool_add(pool, ni, NULL) != 0) {
             printf("tp_pool_add fail\n");
         }
 
-        wc_threadnum(STR_WC);
+        wc_threadnum();
     }
 
     for (i = 0; i < MAX_THREADS * 2; i++) {
@@ -53,7 +53,7 @@ int main() {
             printf("tp_pool_add fail:%s\n", strerror(rv));
         }
 
-        wc_threadnum(STR_WC);
+        wc_threadnum();
     }
 
     tp_pool_wait(pool, TP_SLOW);
