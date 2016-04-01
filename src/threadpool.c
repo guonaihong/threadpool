@@ -229,10 +229,6 @@ int tp_chan_wake(tp_chan_t *c) {
         return -1;
     }
 
-    if (tp_chan_count(c) > 0) {
-        return -1;
-    }
-
     ATOMIC_ADD(&c->exit, TP_SHUTDOWN);
     pthread_cond_broadcast(&c->rwait);
     pthread_cond_broadcast(&c->wwait);
@@ -632,6 +628,10 @@ void tp_hash_free(tp_hash_t *hash) {
     int             i, len;
     tp_hash_node_t *p, *n;
 
+    if (hash == NULL) {
+        return;
+    }
+
     i = 0, len = hash->size + 1;
 
     for (; i < len; i++) {
@@ -662,6 +662,7 @@ struct tp_pool_t {
     int              min_thread;
     int              flags;
     int              ms;
+    int              run_task_threads;
     int              run_threads;
     int              die_threads;
     int              shutdown;
@@ -737,9 +738,12 @@ static void tp_pool_thread_node_del(tp_pool_t *pool, tp_thread_arg_t *arg) {
 
 /* pool is empty returns true, false otherwise */
 int tp_pool_isempty(tp_pool_t *pool) {
-    if (tp_chan_count(pool->task_chan) == 0 &&
-        ATOMIC_LOAD(&pool->run_threads) == 0) {
+    if (tp_chan_count(pool->task_chan) == 0
+        && ATOMIC_LOAD(&pool->run_task_threads) == 0
+        && ATOMIC_LOAD(&pool->run_threads) == 0) {
+
         return 1;
+
     }
 
     return 0;
@@ -784,13 +788,14 @@ static void *tp_pool_thread(void *arg) {
     tp_log(pool->log, TP_INFO, "thread %ld create ok\n",
            pthread_self());
 
+    ATOMIC_INC(&pool->run_threads);
     for (;;) {
         /* get task from queue */
         err = tp_chan_recv_timedwait(pool->task_chan, (void **)&task, ms * 10);
 
         if (err == 0) {
-            /* pool->run_threads++ */
-            ATOMIC_INC(&pool->run_threads);
+            /* pool->run_task_threads++ */
+            ATOMIC_INC(&pool->run_task_threads);
 
             if (task->type & TP_TASK) {
                 task->function(task->arg);
@@ -800,17 +805,11 @@ static void *tp_pool_thread(void *arg) {
                 plugin_arg_free((void *)task);
             }
 
-            /* pool->run_threads-- */
-            ATOMIC_DEC(&pool->run_threads);
+            /* pool->run_task_threads-- */
+            ATOMIC_DEC(&pool->run_task_threads);
 
             countdown = 3;
             continue;
-        }
-
-        if (ATOMIC_LOAD(&pool->shutdown) == 0 && tp_pool_isempty(pool)) {
-            tp_log(pool->log, TP_DEBUG, "thread %ld notify tp_poll_wait function sets shutdown\n",
-                    pthread_self());
-            pthread_cond_signal(&pool->pool_wait);
         }
 
         if (tp_pool_thread_isexit(pool, arg, &countdown)) {
@@ -819,6 +818,13 @@ static void *tp_pool_thread(void *arg) {
 
         tp_log(pool->log, TP_DEBUG, "thread %ld recv task timeout\n",
                pthread_self());
+    }
+    ATOMIC_DEC(&pool->run_threads);
+
+    if (tp_pool_isempty(pool)) {
+        tp_log(pool->log, TP_DEBUG, "thread %ld notify tp_poll_wait function sets shutdown\n",
+                pthread_self());
+        pthread_cond_signal(&pool->pool_wait);
     }
 
     tp_log(pool->log, TP_DEBUG, "thread %ld bye bye\n",
@@ -930,6 +936,8 @@ static void myfree(void *val) {
     free(val);
 }
 
+/* default 500 ms */
+#define TP_POOL_TIME 500
 /* tp_pool_t *tp_pool_create(int max_thread, int chan_size,
  *                           int flags, int min_threads, int ms) */
 tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...) {
@@ -954,13 +962,11 @@ tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...) {
         goto fail;
     }
 
-    pool->run_threads = pool->shutdown = 0;
-
     if (tp_pool_max_thread_set(pool, max_thread) != 0) {
         goto fail;
     }
 
-    pool->ms = 500;
+    pool->ms = TP_POOL_TIME;
     pool->task_chan = tp_chan_new(chan_size);
     if (pool->task_chan == NULL) {
         goto fail;
@@ -1055,11 +1061,26 @@ int tp_pool_thread_deln(tp_pool_t *pool, int n) {
 }
 
 int tp_pool_wait(tp_pool_t *pool, int flags) {
+    tp_list_node_t  *tmp, *node;
+    tp_thread_arg_t *arg;
+
     if (pool->task_chan == NULL || pool->log == NULL) {
         return -1;
     }
 
-    if (flags == TP_SLOW) {
+    if (flags == TP_FAST) {
+        ATOMIC_ADD(&pool->shutdown, TP_SHUTDOWN);
+
+        tp_chan_wake(pool->task_chan);
+        if (pool->list_thread != NULL) {
+            TP_LIST_FOREACH_SAFE(node, tmp, &pool->list_thread->list) {
+                arg = (tp_thread_arg_t *)node->value;
+                pthread_join(arg->tid, NULL);
+                thread_arg_free(arg);
+                free(node);
+            }
+        }
+    } else if (flags == TP_SLOW) {
         pthread_mutex_lock(&pool->l);
         do {
             pthread_cond_wait(&pool->pool_wait, &pool->l);
@@ -1068,28 +1089,14 @@ int tp_pool_wait(tp_pool_t *pool, int flags) {
     }
 
     tp_log(pool->log, TP_INFO, "chan is empty(%d), run threads is empty(%d)\n",
-            tp_chan_count(pool->task_chan), ATOMIC_LOAD(&pool->run_threads));
-    ATOMIC_ADD(&pool->shutdown, TP_SHUTDOWN);
+            tp_chan_count(pool->task_chan), ATOMIC_LOAD(&pool->run_task_threads));
     return 0;
 }
 
 int tp_pool_destroy(tp_pool_t *pool) {
 
-    tp_list_node_t *tmp, *node;
-    tp_thread_arg_t *arg;
-
     if (pool == NULL) {
         return -1;
-    }
-
-    tp_chan_wake(pool->task_chan);
-    if (pool->list_thread != NULL) {
-        TP_LIST_FOREACH_SAFE(node, tmp, &pool->list_thread->list) {
-            arg = (tp_thread_arg_t *)node->value;
-            pthread_join(arg->tid, NULL);
-            thread_arg_free(arg);
-            free(node);
-        }
     }
 
     free(pool->list_thread);
