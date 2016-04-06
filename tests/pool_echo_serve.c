@@ -19,16 +19,56 @@
 
 #define TP_PORT 5678
 
-#ifdef TP_MODULE_NAME
-# undef  TP_MODULE_NAME
+#ifdef TP_PLUGIN_NAME
+# undef  TP_PLUGIN_NAME
 #endif
 
-#define TP_MODULE_NAME "echo server"
+#define TP_PLUGIN_NAME "echo server"
 
 #ifndef MSG_NOSIGNAL
 # define MSG_NOSIGNAL 0
 #endif
+
 tp_log_t *mylog;
+
+typedef struct echo_server_t echo_server_t;
+
+struct echo_server_t {
+    tp_chan_t *chan;
+};
+
+static int  producer_global_init(tp_vtable_global_arg_t *g);
+static int  producer_create(tp_vtable_child_arg_t *c);
+static int  producer_process(tp_vtable_child_arg_t *arg);
+static void producer_destroy(tp_vtable_child_arg_t *arg);
+static void producer_global_destroy(tp_vtable_global_arg_t *g);
+
+static tp_plugin_t producer = {
+    .vtable = {
+        .global_init = producer_global_init,
+        .create = producer_create,
+        .process = producer_process,
+        .destroy = producer_destroy,
+        .global_destroy = producer_global_destroy,
+    },
+    .user_data   = "accept",
+    .plugin_name = TP_PLUGIN_NAME,
+};
+
+static int consumer_process(tp_vtable_child_arg_t *arg);
+
+static tp_plugin_t consumer = {
+    .vtable= {
+        .global_init = NULL,
+        .create = NULL,
+        .process = consumer_process,
+        .destroy = NULL,
+        .global_destroy = NULL,
+    },
+    .user_data   = "read write socket",
+    .plugin_name = TP_PLUGIN_NAME,
+};
+
 static void get_ns(uint64_t *u64) {
 #ifdef __linux__
     struct timespec t;
@@ -42,7 +82,7 @@ static void get_ns(uint64_t *u64) {
 #endif
 }
 
-int listen_new(unsigned ip, unsigned short port) {
+static int listen_new(unsigned ip, unsigned short port) {
     struct sockaddr_in ser;
     int listen_fd, rv;
 
@@ -66,12 +106,7 @@ int listen_new(unsigned ip, unsigned short port) {
     return listen_fd;
 }
 
-typedef struct echo_server_t echo_server_t;
-struct echo_server_t {
-    tp_chan_t *chan;
-};
-
-int producer_global_init(tp_vtable_global_arg_t *g) {
+static int producer_global_init(tp_vtable_global_arg_t *g) {
     echo_server_t *s = NULL;
     s = malloc(sizeof(*s));
     assert(s != NULL);
@@ -82,7 +117,7 @@ int producer_global_init(tp_vtable_global_arg_t *g) {
     return 0;
 }
 
-int producer_create(tp_vtable_child_arg_t *c) {
+static int producer_create(tp_vtable_child_arg_t *c) {
     c->child_arg = strdup("producer create ok");
     assert(c->child_arg != NULL);
     tp_log(mylog, TP_INFO, "%s\n", __func__);
@@ -104,10 +139,10 @@ static int set_fl(int fd, int flags) {
     return 0;
 }
 
-static int accept_wait(int listen_fd) {
+static int accept_timedwait(int listen_fd, int sec) {
     fd_set rfd;
     struct timeval tv;
-    tv.tv_sec  = 5;
+    tv.tv_sec  = sec;
     tv.tv_usec = 0;
 
     FD_ZERO(&rfd);
@@ -116,7 +151,7 @@ static int accept_wait(int listen_fd) {
 }
 
 /* listening socket */
-int producer_process(tp_vtable_child_arg_t *arg) {
+static int producer_process(tp_vtable_child_arg_t *arg) {
     tp_vtable_global_arg_t *g         = arg->global;
     echo_server_t          *s         = g->producer_arg;
     tp_chan_t              *chan      = s->chan;
@@ -138,24 +173,27 @@ int producer_process(tp_vtable_child_arg_t *arg) {
     set_fl(listen_fd, O_NONBLOCK);
     for (;;) {
         get_ns(&id);
-        rv = accept_wait(listen_fd);
-        if (rv == -1) {
-            tp_log(mylog, TP_ERROR, "accept_wait error:%s", strerror(errno));
-            exit(1);
-        } else if (rv == 0){
-            tp_chan_wake(chan);
-            tp_log(mylog, TP_WARN, "accept_wait timeout\n");
-            /*
-             * This is just a test program, where quit. 
-             * Real business server is generally not quit
-             */
-            goto done;
-        } else {
+        rv = accept_timedwait(listen_fd, 5/* sec */);
+        if (rv > 0) {
+            /* on success */
             connfd = accept(listen_fd, NULL, NULL);
             if (connfd == -1) {
                 tp_log(mylog, TP_INFO, "accept error:%s\n", strerror(errno));
                 break;
             }
+        } else if (rv == -1) {
+            /* select listen fd fail */
+            tp_log(mylog, TP_ERROR, "accept_timedwait error:%s", strerror(errno));
+            exit(1);
+        } else if (rv == 0){
+            /* select listen fd timeout */
+            tp_chan_wake(chan);
+            tp_log(mylog, TP_WARN, "accept_timedwait timeout\n");
+            /*
+             * This is just a test program, where quit. 
+             * Real business server is generally not quit
+             */
+            goto done;
         }
 
         tp_log(mylog, TP_DEBUG, "accept send fd before:%lu\n", id);
@@ -173,14 +211,14 @@ int producer_process(tp_vtable_child_arg_t *arg) {
 
 done:
     close(listen_fd);
-    return 1;
+    return TP_PLUGIN_EXIT;
 }
 
-void producer_destroy(tp_vtable_child_arg_t *arg) {
+static void producer_destroy(tp_vtable_child_arg_t *arg) {
     free(arg->child_arg);
 }
 
-void producer_global_destroy(tp_vtable_global_arg_t *g) {
+static void producer_global_destroy(tp_vtable_global_arg_t *g) {
     echo_server_t *s = g->producer_arg;
     tp_chan_free(s->chan);
     free(s);
@@ -188,7 +226,7 @@ void producer_global_destroy(tp_vtable_global_arg_t *g) {
 }
 
 /* from the client to read and write data back */
-int consumer_process(tp_vtable_child_arg_t *arg) {
+static int consumer_process(tp_vtable_child_arg_t *arg) {
     tp_vtable_global_arg_t  *g       = arg->global;
     echo_server_t           *s       = g->producer_arg;
     tp_chan_t               *chan    = s->chan;
@@ -205,7 +243,7 @@ int consumer_process(tp_vtable_child_arg_t *arg) {
         rv = tp_chan_recv_timedwait(chan, &val, -1);
         if (rv == TP_SHUTDOWN) {
             tp_log(mylog, TP_INFO, "%ld:%s:id(%ld) shutdown\n", pthread_self(), __func__, id);
-            return 1;
+            return TP_PLUGIN_EXIT;
         }
 
         tp_log(mylog, TP_DEBUG, "%ld:%s:id(%ld) recv data before\n", pthread_self(), __func__, id);
@@ -224,32 +262,8 @@ int consumer_process(tp_vtable_child_arg_t *arg) {
     return 0;
 }
 
-static tp_plugin_t producer = {
-    .vtable = {
-        .global_init = producer_global_init,
-        .create = producer_create,
-        .process = producer_process,
-        .destroy = producer_destroy,
-        .global_destroy = producer_global_destroy,
-    },
-    .user_data   = "accept",
-    .plugin_name = TP_MODULE_NAME,
-};
-
-static tp_plugin_t consumer = {
-    .vtable= {
-        .global_init = NULL,
-        .create = NULL,
-        .process = consumer_process,
-        .destroy = NULL,
-        .global_destroy = NULL,
-    },
-    .user_data   = "read write socket",
-    .plugin_name = TP_MODULE_NAME,
-};
-
 #define TOTAL 100
-void echo_client(void *arg) {
+static void echo_client(void *arg) {
     int s, r, n;
     struct sockaddr_in client;
     uint64_t id;
@@ -284,7 +298,7 @@ fail:
     tp_log(mylog, TP_DEBUG, "client end id:%lu\n", id);
 }
 
-void start_client(tp_pool_t *pool) {
+static void start_client(tp_pool_t *pool) {
     int        i;
 
     for (i = 0; i < TOTAL; i++) {

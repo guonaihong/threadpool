@@ -36,7 +36,7 @@ extern "C" {
 #endif
 
 #define TP_VERSION "v0.0.0"
-#define TP_MODULE_NAME "thread-pool"
+#define TP_MODULE_NAME "threadpool"
 
 #define ATOMIC_DEC(ptr)  __sync_sub_and_fetch(ptr, 1)
 #define ATOMIC_INC(ptr)  __sync_add_and_fetch(ptr, 1)
@@ -138,14 +138,15 @@ void *tp_hash_del(tp_hash_t *hash, const void *key, int klen);
 
 void tp_hash_free(tp_hash_t *hash);
 
-#define TP_TASK                      (1 << 1)
-#define TP_MOD_PRODUCER              (1 << 2)
-#define TP_MOD_CONSUMER              (1 << 3)
-#define TP_MOD_CONSUMER_EXIT         (1 << 4)
-#define TP_MOD_PRODUCER_EMPTY        (1 << 5)
-#define TP_MOD_PRODUCER_GFUNC_EMPTY  (1 << 6)
-#define TP_MOD_PRODUCER_GINIT_FAIL   (1 << 7)
-#define TP_MOD_PRODUCER_EXIT         (1 << 8)
+#define TP_TASK                         (1 << 1)
+#define TP_PLUGIN_PRODUCER              (1 << 2)
+#define TP_PLUGIN_CONSUMER              (1 << 3)
+#define TP_PLUGIN_CONSUMER_EXIT         (1 << 4)
+#define TP_PLUGIN_PRODUCER_EMPTY        (1 << 5)
+#define TP_PLUGIN_PRODUCER_GFUNC_EMPTY  (1 << 6)
+#define TP_PLUGIN_PRODUCER_GINIT_FAIL   (1 << 7)
+#define TP_PLUGIN_PRODUCER_EXIT         (1 << 8)
+#define TP_PLUGIN_EXIT                  (1 << 9)
 
 /*
  * threadpool module

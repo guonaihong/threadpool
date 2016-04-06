@@ -337,8 +337,13 @@ int tp_log(tp_log_t *log, int level, const char *fmt, ...) {
     for (;;) {
         va_start(ap, fmt);
 
-        title_size = snprintf(p, buffer_size, "[%s] [%-5s] ", title, 
-                tp_log_level2str(level));
+        if (log->prog) {
+            title_size = snprintf(p, buffer_size, "[%s] [%s] [%-5s] ",
+                         log->prog, title, tp_log_level2str(level));
+        } else {
+            title_size = snprintf(p, buffer_size, "[%s] [%-5s] ", title,
+                         tp_log_level2str(level));
+        }
 
         n = vsnprintf(p + title_size, buffer_size - title_size, fmt, ap);
 
@@ -953,7 +958,7 @@ tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...) {
         goto fail0;
     }
 
-    pool->log = tp_log_new(TP_ERROR, TP_MODULE_NAME""TP_VERSION, 0);
+    pool->log = tp_log_new(TP_ERROR, TP_MODULE_NAME"-"TP_VERSION, 0);
     if (pool->log == NULL) {
         goto fail;
     }
@@ -1204,8 +1209,8 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
     p    = a->plugin;
     pthread_mutex_lock(&pool->plugin_lock);
 
-    if ((a->type & TP_MOD_PRODUCER_EMPTY) ||
-        (a->type & TP_MOD_PRODUCER_GFUNC_EMPTY)) {
+    if ((a->type & TP_PLUGIN_PRODUCER_EMPTY) ||
+        (a->type & TP_PLUGIN_PRODUCER_GFUNC_EMPTY)) {
         g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g == NULL) {
             g = calloc(1, sizeof(*g));
@@ -1222,8 +1227,8 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
         g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g != NULL) {
             /* produces to produce fail */
-            if ((g->status & TP_MOD_PRODUCER_GINIT_FAIL)
-                || (g->status & TP_MOD_PRODUCER_EXIT)) {
+            if ((g->status & TP_PLUGIN_PRODUCER_GINIT_FAIL)
+                || (g->status & TP_PLUGIN_PRODUCER_EXIT)) {
                 err = -1;
                 goto cexit;
             }
@@ -1268,7 +1273,7 @@ static int tp_pool_plugin_producer(tp_plugin_arg_t *a) {
         err = p->vtable.global_init(g);
         if (err != 0) {
             /* producer init fail */
-            g->status |= TP_MOD_PRODUCER_GINIT_FAIL;
+            g->status |= TP_PLUGIN_PRODUCER_GINIT_FAIL;
         }
         tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, g);
     }
@@ -1302,7 +1307,7 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
         goto done;
     }
 
-    if (a->type == TP_MOD_CONSUMER) {
+    if (a->type == TP_PLUGIN_CONSUMER) {
         g->c_ref_count = g->c_ref_count > 0 ? --g->c_ref_count : 0;
         if (g->c_ref_count == 0) {
             pthread_cond_signal(&pool->free_wait);
@@ -1310,12 +1315,12 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
                 p->vtable.global_destroy(g);
             }
 
-            if (g->status & TP_MOD_CONSUMER_EXIT) {
-                g->status |= TP_MOD_CONSUMER_EXIT;
+            if (g->status & TP_PLUGIN_CONSUMER_EXIT) {
+                g->status |= TP_PLUGIN_CONSUMER_EXIT;
             }
         }
 
-    } else if (a->type == TP_MOD_PRODUCER){
+    } else if (a->type == TP_PLUGIN_PRODUCER){
         g->p_ref_count = g->p_ref_count > 0 ? --g->p_ref_count : 0;
         if (g->p_ref_count == 0) {
             while (g->c_ref_count > 0) {
@@ -1325,8 +1330,8 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
                 p->vtable.global_destroy(g);
             }
 
-            if (g->status & TP_MOD_PRODUCER_EXIT) {
-                g->status |= TP_MOD_PRODUCER_EXIT;
+            if (g->status & TP_PLUGIN_PRODUCER_EXIT) {
+                g->status |= TP_PLUGIN_PRODUCER_EXIT;
             }
         }
     }
@@ -1346,9 +1351,9 @@ static void tp_pool_plugin_main(void *arg) {
         return;
     }
 
-    if (a->type & TP_MOD_CONSUMER) {
+    if (a->type & TP_PLUGIN_CONSUMER) {
         tp_pool_plugin_consumer(a);
-    } else if (a->type & TP_MOD_PRODUCER) {
+    } else if (a->type & TP_PLUGIN_PRODUCER) {
         tp_pool_plugin_producer(a);
     }
 
@@ -1365,9 +1370,9 @@ int tp_pool_plugin_producer_consumer_add(tp_pool_t   *pool,
     int rv;
     int status = 0;
     if (produces == NULL) {
-        status |= TP_MOD_PRODUCER_EMPTY;
+        status |= TP_PLUGIN_PRODUCER_EMPTY;
     } else {
-        rv = tp_pool_plugin_addn(pool, np, produces, TP_MOD_PRODUCER);
+        rv = tp_pool_plugin_addn(pool, np, produces, TP_PLUGIN_PRODUCER);
         if (rv != 0) {
             return rv;
         }
@@ -1375,11 +1380,11 @@ int tp_pool_plugin_producer_consumer_add(tp_pool_t   *pool,
     }
 
     if (produces && produces->vtable.global_init == NULL) {
-        status |= TP_MOD_PRODUCER_GFUNC_EMPTY;
+        status |= TP_PLUGIN_PRODUCER_GFUNC_EMPTY;
     }
 
 
-    rv = tp_pool_plugin_addn(pool, nc, consumers, TP_MOD_CONSUMER | status);
+    rv = tp_pool_plugin_addn(pool, nc, consumers, TP_PLUGIN_CONSUMER | status);
     if (rv != 0) {
         return rv;
     }
