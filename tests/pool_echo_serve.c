@@ -315,11 +315,11 @@ int main() {
     tp_pool_t *pool, *client_pool;
 
     mylog = tp_log_new(TP_INFO, "echo client", TP_LOG_LOCK);
-    pool = tp_pool_create(5 /*max thread number*/, 5/* chan size */, 
+    pool = tp_pool_new(5 /*max thread number*/, 5/* chan size */, 
             1/* min threads */, TP_AUTO_ADD | TP_AUTO_DEL, TP_NULL);
     assert(pool != NULL);
 
-    client_pool = tp_pool_create(30, 30, TP_NULL);
+    client_pool = tp_pool_new(30, 30, TP_NULL);
     assert(pool != NULL);
 
     fprintf(stderr, "pool create ok\n");
@@ -331,8 +331,8 @@ int main() {
     tp_pool_wait(client_pool, TP_FAST);
     tp_pool_wait(pool, TP_SLOW);
 
-    tp_pool_destroy(client_pool);
-    tp_pool_destroy(pool);
+    tp_pool_free(client_pool);
+    tp_pool_free(pool);
     tp_log_free(mylog);
     return 0;
 }

@@ -45,7 +45,7 @@ void *start_add_task(void *arg) {
 }
 
 int main() {
-    tp_pool_t *pool = tp_pool_create(10/*Number of threads*/,
+    tp_pool_t *pool = tp_pool_new(10/*Number of threads*/,
                                      10/*The maximum capacity of the chan*/,
                                      TP_NULL);
 
@@ -58,7 +58,7 @@ int main() {
     tp_pool_wait(pool, TP_FAST);
     fprintf(stderr, "wait after\n");
 
-    tp_pool_destroy(pool);
+    tp_pool_free(pool);
 
     printf("total(%d)\n", total);
     assert(TOTAL * 2 == total);

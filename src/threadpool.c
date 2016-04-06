@@ -943,9 +943,9 @@ static void myfree(void *val) {
 
 /* default 500 ms */
 #define TP_POOL_TIME 500
-/* tp_pool_t *tp_pool_create(int max_thread, int chan_size,
+/* tp_pool_t *tp_pool_new(int max_thread, int chan_size,
  *                           int flags, int min_threads, int ms) */
-tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...) {
+tp_pool_t *tp_pool_new(int max_thread, int chan_size, ...) {
     va_list          ap;
     tp_pool_t       *pool;
 
@@ -994,7 +994,7 @@ fail0: free(pool);
       return NULL;
 fail:
     tp_pool_wait(pool, TP_FAST);
-    tp_pool_destroy(pool);
+    tp_pool_free(pool);
     return NULL;
 }
 
@@ -1098,7 +1098,7 @@ int tp_pool_wait(tp_pool_t *pool, int flags) {
     return 0;
 }
 
-int tp_pool_destroy(tp_pool_t *pool) {
+int tp_pool_free(tp_pool_t *pool) {
 
     if (pool == NULL) {
         return -1;

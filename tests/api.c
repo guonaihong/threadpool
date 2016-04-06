@@ -25,15 +25,15 @@ struct tp_pool_t {
     pthread_cond_t   pool_wait;
 };
 
-static void tst_tp_pool_destroy_all_fail() {
+static void tst_tp_pool_free_all_fail() {
     tp_pool_t       *pool;
     pool = calloc(1, sizeof(*pool));
     assert(pool != NULL);
     tp_pool_wait(pool, TP_FAST);
-    tp_pool_destroy(pool);
+    tp_pool_free(pool);
 }
 
-static void tst_tp_pool_destroy_only_log_ok() {
+static void tst_tp_pool_free_only_log_ok() {
     tp_pool_t       *pool;
     pool = calloc(1, sizeof(*pool));
     assert(pool != NULL);
@@ -42,10 +42,10 @@ static void tst_tp_pool_destroy_only_log_ok() {
     assert(pool->log != NULL);
 
     tp_pool_wait(pool, TP_FAST);
-    tp_pool_destroy(pool);
+    tp_pool_free(pool);
 }
 
-static void tst_tp_pool_destroy_log_chan_ok() {
+static void tst_tp_pool_free_log_chan_ok() {
     tp_pool_t       *pool;
     pool = calloc(1, sizeof(*pool));
     assert(pool != NULL);
@@ -57,16 +57,16 @@ static void tst_tp_pool_destroy_log_chan_ok() {
     assert(pool->task_chan != NULL);
 
     tp_pool_wait(pool, TP_FAST);
-    tp_pool_destroy(pool);
+    tp_pool_free(pool);
 }
 
-static void tst_tp_pool_destroy() {
-    tst_tp_pool_destroy_all_fail();
-    tst_tp_pool_destroy_only_log_ok();
-    tst_tp_pool_destroy_log_chan_ok();
+static void tst_tp_pool_free() {
+    tst_tp_pool_free_all_fail();
+    tst_tp_pool_free_only_log_ok();
+    tst_tp_pool_free_log_chan_ok();
 }
 
 int main() {
-    tst_tp_pool_destroy();
+    tst_tp_pool_free();
     return 0;
 }

@@ -160,16 +160,16 @@ void tp_hash_free(tp_hash_t *hash);
 
 typedef struct tp_pool_t tp_pool_t;
 
-/* tp_pool_t *tp_pool_create(int max_thread, int chan_size,
+/* tp_pool_t *tp_pool_new(int max_thread, int chan_size,
  *                           int min_threads, int flags, int ms, int tp_null) */
 
-/* tp_pool_t *tp_pool_create(int max_thread, int chan_size,
+/* tp_pool_t *tp_pool_new(int max_thread, int chan_size,
  *                           int min_threads, int tp_null) */
 
-/* tp_pool_t *tp_pool_create(int max_thread, int chan_size, int tp_null)
+/* tp_pool_t *tp_pool_new(int max_thread, int chan_size, int tp_null)
  */
 
-tp_pool_t *tp_pool_create(int max_thread, int chan_size, ...);
+tp_pool_t *tp_pool_new(int max_thread, int chan_size, ...);
 
 int tp_pool_add(tp_pool_t *pool, void (*function)(void *), void *arg);
 
@@ -179,7 +179,7 @@ int tp_pool_thread_deln(tp_pool_t *pool, int n);
 
 int tp_pool_wait(tp_pool_t *pool, int flags);
 
-int tp_pool_destroy(tp_pool_t *pool);
+int tp_pool_free(tp_pool_t *pool);
 
 
 /*

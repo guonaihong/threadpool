@@ -60,7 +60,7 @@ int main() {
     tp_pool_t *pool = NULL;
     pthread_t  pr_tid;
 
-    pool = tp_pool_create(MAX_THREADS, MAX_THREADS * 0.8 /* chan size */, MIN_THREADS,
+    pool = tp_pool_new(MAX_THREADS, MAX_THREADS * 0.8 /* chan size */, MIN_THREADS,
                           TP_AUTO_ADD | TP_AUTO_DEL,500/*500 ms*/, TP_NULL);
 
     assert(pool != NULL);
@@ -86,7 +86,7 @@ int main() {
 
     pthread_create(&pr_tid, NULL, pr_threadnum, NULL);
     tp_pool_wait(pool, TP_SLOW);
-    tp_pool_destroy(pool);
+    tp_pool_free(pool);
 
     __sync_fetch_and_add(&need_exit, 1);
     pthread_join(pr_tid, NULL);
