@@ -38,9 +38,9 @@ extern "C" {
 #define TP_VERSION "v0.0.0"
 #define TP_MODULE_NAME "threadpool"
 
-#define ATOMIC_DEC(ptr)  __sync_sub_and_fetch(ptr, 1)
-#define ATOMIC_INC(ptr)  __sync_add_and_fetch(ptr, 1)
-#define ATOMIC_LOAD(ptr) __sync_add_and_fetch(ptr, 0)
+#define ATOMIC_DEC(ptr)    __sync_sub_and_fetch(ptr, 1)
+#define ATOMIC_INC(ptr)    __sync_add_and_fetch(ptr, 1)
+#define ATOMIC_LOAD(ptr)   __sync_add_and_fetch(ptr, 0)
 #define ATOMIC_ADD(ptr, v) __sync_add_and_fetch(ptr, v)
 
 /*
@@ -151,25 +151,27 @@ void tp_hash_free(tp_hash_t *hash);
 /*
  * threadpool module
  */
-#define TP_AUTO_ADD 0x1
-#define TP_AUTO_DEL 0x2
-#define TP_NULL     -2
-#define TP_SHUTDOWN 0x1
-#define TP_FAST     0x0
-#define TP_SLOW     0x1
+#define TP_AUTO_ADD   0x1
+#define TP_AUTO_DEL   0x2
+#define TP_MIN_CREATE (1 << 3)
+#define TP_MAX_CREATE (1 << 4)
+#define TP_NULL       -2
+#define TP_SHUTDOWN   0x1
+#define TP_FAST       0x0
+#define TP_SLOW       0x1
 
 typedef struct tp_pool_t tp_pool_t;
 
-/* tp_pool_t *tp_pool_new(int max_thread, int chan_size,
+/* tp_pool_t *tp_pool_new(int max_threads, int chan_size,
  *                           int min_threads, int flags, int ms, int tp_null) */
 
-/* tp_pool_t *tp_pool_new(int max_thread, int chan_size,
+/* tp_pool_t *tp_pool_new(int max_threads, int chan_size,
  *                           int min_threads, int tp_null) */
 
-/* tp_pool_t *tp_pool_new(int max_thread, int chan_size, int tp_null)
+/* tp_pool_t *tp_pool_new(int max_threads, int chan_size, int tp_null)
  */
 
-tp_pool_t *tp_pool_new(int max_thread, int chan_size, ...);
+tp_pool_t *tp_pool_new(int max_threads, int chan_size, ...);
 
 int tp_pool_add(tp_pool_t *pool, void (*function)(void *), void *arg);
 

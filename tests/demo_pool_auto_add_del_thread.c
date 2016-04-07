@@ -61,7 +61,7 @@ int main() {
     pthread_t  pr_tid;
 
     pool = tp_pool_new(MAX_THREADS, MAX_THREADS * 0.8 /* chan size */, MIN_THREADS,
-                          TP_AUTO_ADD | TP_AUTO_DEL,500/*500 ms*/, TP_NULL);
+                          TP_AUTO_ADD | TP_AUTO_DEL |TP_MIN_CREATE, 500/*500 ms*/, TP_NULL);
 
     assert(pool != NULL);
 

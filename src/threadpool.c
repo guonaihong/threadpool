@@ -663,8 +663,8 @@ static void plugin_arg_free(void *arg);
 static void tp_pool_plugin_main(void *arg);
 
 struct tp_pool_t {
-    int              max_thread;
-    int              min_thread;
+    int              max_threads;
+    int              min_threads;
     int              flags;
     int              ms;
     int              run_task_threads;
@@ -846,10 +846,10 @@ static int tp_pool_thread_add_core(tp_pool_t *pool) {
         ATOMIC_DEC(&pool->die_threads);
     }
 
-    if (tp_list_len(pool->list_thread) >= pool->max_thread) {
+    if (tp_list_len(pool->list_thread) >= pool->max_threads) {
         tp_log(pool->log, TP_INFO, "current threads(%d) > max threads(%d)"
                "add thread fail\n", tp_list_len(pool->list_thread),
-               pool->max_thread);
+               pool->max_threads);
         return -1;
     }
 
@@ -874,11 +874,11 @@ fail_arg: thread_arg_free(arg);
     return rv;
 }
 
-static int tp_pool_max_thread_set(tp_pool_t *pool, int max_thread) {
-    pool->max_thread  = max_thread;
+static int tp_pool_max_thread_set(tp_pool_t *pool, int max_threads) {
+    pool->max_threads  = max_threads;
     /* get number of cpus */
-    if (max_thread <= 0 &&
-            (pool->max_thread = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
+    if (max_threads <= 0 &&
+            (pool->max_threads = sysconf(_SC_NPROCESSORS_ONLN)) == -1) {
         tp_log(pool->log, TP_ERROR,
                 "could not determine number of CPUs online:%s\n",
                 strerror(errno));
@@ -892,7 +892,7 @@ static void tp_pool_args_set(tp_pool_t *pool, va_list ap) {
 
     for (i = 0; (val = va_arg(ap, int)) != TP_NULL; i++) {
         if (i == 0) {
-            pool->min_thread = val;
+            pool->min_threads = val;
         } else if (i == 1) {
             pool->flags = val;
         } else if (i == 2) {
@@ -934,23 +934,50 @@ fail4: pthread_mutex_destroy(&pool->plugin_lock);
 fail3: pthread_cond_destroy(&pool->pool_wait);
 fail2: pthread_mutex_destroy(&pool->l);
 fail1: pthread_mutex_destroy(&pool->list_mutex);
-       return err;
+    return err;
 }
 
 static void myfree(void *val) {
     free(val);
 }
 
+static int tp_pool_need_nthreads_gen(tp_pool_t *pool, int *nthreads) {
+    if (pool->max_threads < pool->min_threads) {
+        return -1;
+    }
+
+    if (pool->min_threads < 0) {
+        return -1;
+    }
+
+    if ((pool->flags & TP_MIN_CREATE) &&
+        (pool->flags & TP_MAX_CREATE)) {
+        return -1;
+    }
+
+    /* pool->flags & TP_MAX_CREATE */
+    *nthreads = pool->max_threads;
+    if (pool->flags & TP_MIN_CREATE) {
+        *nthreads = pool->min_threads;
+    }
+
+    if (*nthreads < 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
 /* default 500 ms */
 #define TP_POOL_TIME 500
-/* tp_pool_t *tp_pool_new(int max_thread, int chan_size,
+/* tp_pool_t *tp_pool_new(int max_threads, int chan_size,
  *                           int flags, int min_threads, int ms) */
-tp_pool_t *tp_pool_new(int max_thread, int chan_size, ...) {
+tp_pool_t *tp_pool_new(int max_threads, int chan_size, ...) {
     va_list          ap;
     tp_pool_t       *pool;
+    int              nthreads;
 
-    pool = calloc(1, sizeof(*pool));
-    if (pool == NULL) {
+    if ((pool = calloc(1, sizeof(*pool))) == NULL) {
         return pool;
     }
 
@@ -967,13 +994,12 @@ tp_pool_t *tp_pool_new(int max_thread, int chan_size, ...) {
         goto fail;
     }
 
-    if (tp_pool_max_thread_set(pool, max_thread) != 0) {
+    if (tp_pool_max_thread_set(pool, max_threads) != 0) {
         goto fail;
     }
 
     pool->ms = TP_POOL_TIME;
-    pool->task_chan = tp_chan_new(chan_size);
-    if (pool->task_chan == NULL) {
+    if ((pool->task_chan = tp_chan_new(chan_size)) == NULL) {
         goto fail;
     }
 
@@ -983,8 +1009,11 @@ tp_pool_t *tp_pool_new(int max_thread, int chan_size, ...) {
 
     pool->list_thread = tp_list_new();
 
-    if (tp_pool_thread_addn(pool, pool->min_thread > 0 ?
-                pool->min_thread : pool->max_thread) != 0) {
+    if ((tp_pool_need_nthreads_gen(pool, &nthreads)) != 0) {
+        goto fail;
+    }
+
+    if (tp_pool_thread_addn(pool, nthreads) != 0) {
         goto fail;
     }
 
@@ -1056,7 +1085,7 @@ int tp_pool_thread_addn(tp_pool_t *pool, int n) {
 int tp_pool_thread_deln(tp_pool_t *pool, int n) {
     int i;
     for (i = 0; i < n; i++) {
-        if (ATOMIC_LOAD(&pool->die_threads) >= pool->max_thread) {
+        if (ATOMIC_LOAD(&pool->die_threads) >= pool->max_threads) {
             return 0;
         }
         ATOMIC_INC(&pool->die_threads);
