@@ -35,7 +35,10 @@ typedef struct echo_server_t echo_server_t;
 
 struct echo_server_t {
     tp_chan_t *chan;
+    int        listen_fd;
 };
+
+static int set_fl(int fd, int flags);
 
 static int  producer_global_init(tp_vtable_global_arg_t *g);
 static int  producer_create(tp_vtable_child_arg_t *c);
@@ -108,10 +111,21 @@ static int listen_new(unsigned ip, unsigned short port) {
 
 static int producer_global_init(tp_vtable_global_arg_t *g) {
     echo_server_t *s = NULL;
+
     s = malloc(sizeof(*s));
     assert(s != NULL);
 
     s->chan = tp_chan_new(30);
+
+    s->listen_fd = listen_new(0, htons(TP_PORT));
+    if (s->listen_fd == -1) {
+        tp_log(mylog, TP_ERROR, "listen new fd fail:%s\n",
+              strerror(errno));
+        return -1;
+    }
+
+    set_fl(s->listen_fd, O_NONBLOCK);
+
     g->producer_arg  = s;
     tp_log(mylog, TP_INFO, "%s\n", __func__);
     return 0;
@@ -155,22 +169,14 @@ static int producer_process(tp_vtable_child_arg_t *arg) {
     tp_vtable_global_arg_t *g         = arg->global;
     echo_server_t          *s         = g->producer_arg;
     tp_chan_t              *chan      = s->chan;
-    int                     listen_fd = -1;
     int                     connfd    = -1;
+    int                     listen_fd = s->listen_fd;
     uint64_t                id        = 0;
     int                     rv        = 0;
 
     tp_log(mylog, TP_INFO, "run process start user data:%s\n",
           (char *)arg->child_arg);
 
-    listen_fd = listen_new(0, htons(TP_PORT));
-    if (listen_fd == -1) {
-        tp_log(mylog, TP_ERROR, "listen new fd fail:%s\n",
-              strerror(errno));
-        return -1;
-    }
-
-    set_fl(listen_fd, O_NONBLOCK);
     for (;;) {
         get_ns(&id);
         rv = accept_timedwait(listen_fd, 5/* sec */);
@@ -221,6 +227,7 @@ static void producer_destroy(tp_vtable_child_arg_t *arg) {
 static void producer_global_destroy(tp_vtable_global_arg_t *g) {
     echo_server_t *s = g->producer_arg;
     tp_chan_free(s->chan);
+    close(s->listen_fd);
     free(s);
     tp_log(mylog, TP_INFO, "%s\n", __func__);
 }
@@ -312,27 +319,30 @@ static void start_client(tp_pool_t *pool) {
 
 int main() {
 
-    tp_pool_t *pool, *client_pool;
+    tp_pool_t *server_pool, *client_pool;
 
     mylog = tp_log_new(TP_INFO, "echo client", TP_LOG_LOCK);
-    pool = tp_pool_new(5 /*max thread number*/, 5/* chan size */, 
+    server_pool = tp_pool_new(30 /*max thread number*/, 30/* chan size */, 
             1/* min threads */, TP_AUTO_ADD | TP_AUTO_DEL, TP_NULL);
-    assert(pool != NULL);
+    assert(server_pool != NULL);
 
     client_pool = tp_pool_new(30, 30, TP_NULL);
-    assert(pool != NULL);
+    assert(server_pool != NULL);
 
-    fprintf(stderr, "pool create ok\n");
+    fprintf(stderr, "server_pool create ok\n");
 
-    tp_pool_plugin_producer_consumer_add(pool, &producer, 1, &consumer, 29);
+    tp_pool_plugin_producer_consumer_add(server_pool, &producer, 1, &consumer, 29);
 
+    usleep(1000);/* sleep 1ms wait server listen ok */
     start_client(client_pool);
 
     tp_pool_wait(client_pool, TP_FAST);
-    tp_pool_wait(pool, TP_SLOW);
+    tp_pool_wait(server_pool, TP_SLOW);
 
     tp_pool_free(client_pool);
-    tp_pool_free(pool);
+    tp_pool_free(server_pool);
+
+    tp_log(mylog, TP_INFO, "run ok\n");
     tp_log_free(mylog);
     return 0;
 }

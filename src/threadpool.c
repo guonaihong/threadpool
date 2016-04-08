@@ -765,7 +765,7 @@ static int tp_pool_thread_isexit(tp_pool_t *pool, tp_thread_arg_t *arg, int *cou
         return 1;
     }
 
-    if ((pool->flags & TP_AUTO_DEL) && (*countdown)-- <= 0) {
+    if ((pool->flags & TP_AUTO_DEL) && (*countdown)-- <= 1) {
         tp_pool_thread_node_del(pool, arg);
 
         tp_log(pool->log, TP_INFO, "thread %ld auto delete \n",
@@ -1248,8 +1248,8 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
         }
 
         if (p->vtable.global_init != NULL)
-            goto cinit;
-        goto cexit;
+            goto do_init;
+        goto do_exit;
     }
     /* consumers wait for produces to produce ok */
     for (;;) {
@@ -1259,7 +1259,7 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
             if ((g->status & TP_PLUGIN_PRODUCER_GINIT_FAIL)
                 || (g->status & TP_PLUGIN_PRODUCER_EXIT)) {
                 err = -1;
-                goto cexit;
+                goto do_exit;
             }
             break;
         }
@@ -1267,16 +1267,16 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
         pthread_cond_wait(&pool->new_wait, &pool->plugin_lock);
     }
 
-cinit:
+do_init:
     if (p->vtable.global_init && g->c_ref_count == 0) {
         err = p->vtable.global_init(g);
         if (err != 0) {
-            goto cexit;
+            goto do_exit;
         }
     }
     g->c_ref_count++;
 
-cexit:
+do_exit:
     a->g = g;
     pthread_mutex_unlock(&pool->plugin_lock);
     return err;
@@ -1372,6 +1372,7 @@ done:
 static void tp_pool_plugin_main(void *arg) {
     tp_plugin_arg_t        *a;
     tp_pool_t              *pool;
+    int                     err;
 
     a = (tp_plugin_arg_t *)arg;
     pool = a->self_pool;
@@ -1381,14 +1382,16 @@ static void tp_pool_plugin_main(void *arg) {
     }
 
     if (a->type & TP_PLUGIN_CONSUMER) {
-        tp_pool_plugin_consumer(a);
+        err = tp_pool_plugin_consumer(a);
     } else if (a->type & TP_PLUGIN_PRODUCER) {
-        tp_pool_plugin_producer(a);
+        err = tp_pool_plugin_producer(a);
     }
 
-    tp_pool_plugin_child_loop(a);
+    if (err == 0) {
+        tp_pool_plugin_child_loop(a);
 
-    tp_pool_plugin_global_destroy(a);
+        tp_pool_plugin_global_destroy(a);
+    }
 }
 
 int tp_pool_plugin_producer_consumer_add(tp_pool_t   *pool,
