@@ -209,11 +209,11 @@ struct tp_vtable_global_arg_t {
     int   p_ref_count;
     int   c_ref_count;
     int   status;
+    void *user_data;
 };
 
 struct tp_vtable_child_arg_t {
     void                   *child_arg;
-    void                   *user_data;
     tp_vtable_global_arg_t *global;
 };
 

@@ -1204,7 +1204,6 @@ int tp_pool_plugin_addn(tp_pool_t *pool, int n, tp_plugin_t *plugin, int type) {
 }
 
 static void tp_plugin_to_child_arg(tp_vtable_child_arg_t *c, tp_plugin_arg_t *a) {
-    c->user_data = a->plugin->user_data;
     c->global    = a->g;
 }
 
@@ -1228,6 +1227,14 @@ static void tp_pool_plugin_child_loop(tp_plugin_arg_t *a) {
     }
 }
 
+tp_vtable_global_arg_t *tp_vtable_global_arg_new(tp_plugin_t *a) {
+    tp_vtable_global_arg_t *g;
+    g = (tp_vtable_global_arg_t *)calloc(1, sizeof(*g));
+    assert(g != NULL);
+    g->user_data = a->user_data;
+    return g;
+}
+
 static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
     tp_pool_t              *pool;
     tp_vtable_global_arg_t *g = NULL;
@@ -1242,8 +1249,7 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
         (a->type & TP_PLUGIN_PRODUCER_GFUNC_EMPTY)) {
         g = (tp_vtable_global_arg_t *)tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g == NULL) {
-            g = (tp_vtable_global_arg_t *)calloc(1, sizeof(*g));
-            assert(g != NULL);
+            g = tp_vtable_global_arg_new(p);
             tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, (void *)g);
         }
 
@@ -1296,8 +1302,7 @@ static int tp_pool_plugin_producer(tp_plugin_arg_t *a) {
     pthread_mutex_lock(&pool->plugin_lock);
 
     if (tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR) == NULL) {
-        g = (tp_vtable_global_arg_t *)calloc(1, sizeof(*g));
-        assert(g != NULL);
+        g = tp_vtable_global_arg_new(p);
 
         err = p->vtable.global_init(g);
         if (err != 0) {
