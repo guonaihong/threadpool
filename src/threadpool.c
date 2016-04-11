@@ -57,9 +57,10 @@ struct tp_chan_t {
     pthread_mutex_t wl;
     pthread_cond_t  rwait;
     pthread_cond_t  wwait;
+    void (*free)(void *);
 };
 
-struct tp_chan_t *tp_chan_new(int size) {
+tp_chan_t *tp_chan_new(int size) {
     tp_chan_t *chan = NULL;
     if (size <= 0) {
         return NULL;
@@ -105,6 +106,17 @@ fail2: pthread_cond_destroy(&chan->rwait);
 fail1: free((void **)chan->arr);
 fail0: free(chan);
     return NULL;
+}
+
+tp_chan_t *tp_chan_custom_new(int size,
+                              void (*free)(void *arg)) {
+    tp_chan_t *c;
+    c = tp_chan_new(size);
+    if (c == NULL) {
+        return c;
+    }
+    c->free = free;
+    return c;
 }
 
 static int tp_chan_wait(pthread_cond_t *cond, pthread_mutex_t *mutex, int msec) {
@@ -236,8 +248,15 @@ int tp_chan_wake(tp_chan_t *c) {
 }
 
 int tp_chan_free(tp_chan_t *c) {
+    void *v;
+
     if (c == NULL) {
         return -1;
+    }
+
+    while (c->free && tp_chan_count(c) > 0) {
+        tp_chan_recv_timedwait(c, &v, -1);
+        c->free(v);
     }
 
     assert(tp_chan_count(c) <= 0);
@@ -782,7 +801,7 @@ static int tp_pool_thread_isexit(tp_pool_t *pool, tp_thread_arg_t *arg, int *cou
     return 0;
 }
 
-static void *tp_pool_thread(void *arg) {
+static void *tp_pool_thread_loop(void *arg) {
     tp_thread_arg_t *a    = (tp_thread_arg_t *)arg;
     tp_pool_t       *pool = a->self_pool;
     int ms                = pool->ms;
@@ -863,7 +882,7 @@ static int tp_pool_thread_add_core(tp_pool_t *pool) {
         goto fail_arg;
     }
 
-    rv = pthread_create(&arg->tid, NULL, tp_pool_thread, arg);
+    rv = pthread_create(&arg->tid, NULL, tp_pool_thread_loop, arg);
     if (rv != 0) {
         goto fail_list;
     }
@@ -968,6 +987,15 @@ static int tp_pool_need_nthreads_gen(tp_pool_t *pool, int *nthreads) {
     return 0;
 }
 
+static void arg_free(void *arg) {
+    tp_task_arg_t   *task = (tp_task_arg_t *)arg;
+    if (task->type & TP_TASK) {
+        task_arg_free((void *)task);
+    } else {
+        plugin_arg_free((void *)task);
+    }
+}
+
 /* default 500 ms */
 #define TP_POOL_TIME 500
 /* tp_pool_t *tp_pool_new(int max_threads, int chan_size,
@@ -999,7 +1027,7 @@ tp_pool_t *tp_pool_new(int max_threads, int chan_size, ...) {
     }
 
     pool->ms = TP_POOL_TIME;
-    if ((pool->task_chan = tp_chan_new(chan_size)) == NULL) {
+    if ((pool->task_chan = tp_chan_custom_new(chan_size, arg_free)) == NULL) {
         goto fail;
     }
 
@@ -1114,7 +1142,7 @@ int tp_pool_wait(tp_pool_t *pool, int flags) {
                 free(node);
             }
         }
-    } else if (flags == TP_SLOW) {
+    } else if (flags == TP_SLOW && tp_list_len(pool->list_thread)) {
         pthread_mutex_lock(&pool->l);
         do {
             pthread_cond_wait(&pool->pool_wait, &pool->l);
@@ -1227,11 +1255,14 @@ static void tp_pool_plugin_child_loop(tp_plugin_arg_t *a) {
     }
 }
 
-tp_vtable_global_arg_t *tp_vtable_global_arg_new(tp_plugin_t *a) {
+tp_vtable_global_arg_t *tp_vtable_global_arg_new(tp_plugin_arg_t *a) {
     tp_vtable_global_arg_t *g;
+    tp_plugin_t            *p = a->plugin;
+
     g = (tp_vtable_global_arg_t *)calloc(1, sizeof(*g));
     assert(g != NULL);
-    g->user_data = a->user_data;
+    g->user_data = p->user_data;
+    g->self_pool = a->self_pool;
     return g;
 }
 
@@ -1249,7 +1280,7 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
         (a->type & TP_PLUGIN_PRODUCER_GFUNC_EMPTY)) {
         g = (tp_vtable_global_arg_t *)tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g == NULL) {
-            g = tp_vtable_global_arg_new(p);
+            g = tp_vtable_global_arg_new(a);
             tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, (void *)g);
         }
 
@@ -1302,7 +1333,7 @@ static int tp_pool_plugin_producer(tp_plugin_arg_t *a) {
     pthread_mutex_lock(&pool->plugin_lock);
 
     if (tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR) == NULL) {
-        g = tp_vtable_global_arg_new(p);
+        g = tp_vtable_global_arg_new(a);
 
         err = p->vtable.global_init(g);
         if (err != 0) {

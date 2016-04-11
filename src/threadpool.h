@@ -48,7 +48,10 @@ extern "C" {
  */
 typedef struct tp_chan_t tp_chan_t;
 
-struct tp_chan_t *tp_chan_new(int size);
+tp_chan_t *tp_chan_new(int size);
+
+tp_chan_t *tp_chan_custom_new(int size,
+                              void (*free)(void *arg));
 
 int tp_chan_send_timedwait(tp_chan_t *c, void *v, int msec);
 
@@ -204,12 +207,13 @@ struct tp_vtable_t {
 };
 
 struct tp_vtable_global_arg_t {
-    void *producer_arg;
-    void *consumer_arg;
-    int   p_ref_count;
-    int   c_ref_count;
-    int   status;
-    void *user_data;
+    void      *producer_arg;
+    void      *consumer_arg;
+    int        p_ref_count;
+    int        c_ref_count;
+    int        status;
+    tp_pool_t *self_pool;
+    void      *user_data;
 };
 
 struct tp_vtable_child_arg_t {
