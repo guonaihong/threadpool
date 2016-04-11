@@ -65,7 +65,7 @@ struct tp_chan_t *tp_chan_new(int size) {
         return NULL;
     }
 
-    if ((chan = calloc(1, sizeof(tp_chan_t))) == NULL)
+    if ((chan = (tp_chan_t *)calloc(1, sizeof(tp_chan_t))) == NULL)
         return NULL;
 
     chan->exit = 0;
@@ -262,7 +262,7 @@ struct tp_log_t {
 
 tp_log_t *tp_log_new(int level, char *prog, int flags) {
     tp_log_t *log;
-    log = malloc(sizeof(tp_log_t));
+    log = (tp_log_t *)malloc(sizeof(tp_log_t));
     if (log == NULL)
         return log;
 
@@ -353,7 +353,7 @@ int tp_log(tp_log_t *log, int level, const char *fmt, ...) {
             break;
         }
         buffer_size = n + title_size + 1;
-        p = malloc(buffer_size);
+        p = (char *)malloc(buffer_size);
     }
 
     if (log->flags == TP_LOG_LOCK) {
@@ -388,7 +388,7 @@ void tp_log_free(tp_log_t *log) {
 tp_list_t *tp_list_new(void) {
     tp_list_t      *list = NULL;
 
-    list = malloc(sizeof(*list));
+    list = (tp_list_t *)malloc(sizeof(*list));
     if (list == NULL)
         return list;
 
@@ -399,7 +399,7 @@ tp_list_t *tp_list_new(void) {
 
 tp_list_node_t *tp_list_node_new(void *value) {
     tp_list_node_t *node = NULL;
-    node = malloc(sizeof(*node));
+    node = (tp_list_node_t *)malloc(sizeof(*node));
     if (node == NULL)
         return node;
     node->value = value;
@@ -512,12 +512,12 @@ tp_hash_t *tp_hash_new(int size,
         i = i * 2 + 1;
     }
 
-    hash = calloc(1, sizeof(tp_hash_t));
+    hash = (tp_hash_t *)calloc(1, sizeof(tp_hash_t));
     if (hash == NULL)
         return hash;
 
     hash->size    = i;
-    hash->buckets = calloc(hash->size + 1,
+    hash->buckets = (tp_hash_node_t **)calloc(hash->size + 1,
                            sizeof(tp_hash_node_t *));
 
     if (hash->buckets == NULL) {
@@ -587,7 +587,7 @@ void *tp_hash_put(tp_hash_t  *hash,
 
     /* key not exits */
     if (*pp == NULL) {
-        newp = malloc(sizeof(*newp));
+        newp = (tp_hash_node_t *)malloc(sizeof(*newp));
         if (newp == NULL) {
             return NULL;
         }
@@ -701,7 +701,7 @@ struct tp_task_arg_t {
 static tp_thread_arg_t *thread_arg_new(tp_pool_t *self_pool) {
     tp_thread_arg_t *arg = NULL;
 
-    arg = malloc(sizeof(*arg));
+    arg = (tp_thread_arg_t *)malloc(sizeof(*arg));
     if (arg == NULL)
         return arg;
     arg->self_pool = self_pool;
@@ -714,7 +714,7 @@ static void thread_arg_free(tp_thread_arg_t *arg) {
 
 static tp_task_arg_t *task_arg_new(void (*function)(void *), void *a) {
     tp_task_arg_t *arg = NULL;
-    arg = malloc(sizeof(*arg));
+    arg = (tp_task_arg_t *)malloc(sizeof(*arg));
     if (arg == NULL)
         return arg;
     arg->type     = TP_TASK;
@@ -729,7 +729,7 @@ static void task_arg_free(void *arg) {
 }
 
 static void tp_pool_thread_node_del(tp_pool_t *pool, tp_thread_arg_t *arg) {
-    tp_list_node_t  *node = arg->self_node;
+    tp_list_node_t  *node = (tp_list_node_t *)arg->self_node;
 
     pthread_mutex_lock(&pool->list_mutex);
     tp_list_del(pool->list_thread, node);
@@ -817,7 +817,7 @@ static void *tp_pool_thread(void *arg) {
             continue;
         }
 
-        if (tp_pool_thread_isexit(pool, arg, &countdown)) {
+        if (tp_pool_thread_isexit(pool, (tp_thread_arg_t *)arg, &countdown)) {
             break;
         }
 
@@ -869,7 +869,7 @@ static int tp_pool_thread_add_core(tp_pool_t *pool) {
     }
     return 0;
 
-fail_list:tp_list_del(pool->list_thread, arg->self_node);
+fail_list:tp_list_del(pool->list_thread, (tp_list_node_t *)arg->self_node);
 fail_arg: thread_arg_free(arg);
     return rv;
 }
@@ -977,7 +977,7 @@ tp_pool_t *tp_pool_new(int max_threads, int chan_size, ...) {
     tp_pool_t       *pool;
     int              nthreads;
 
-    if ((pool = calloc(1, sizeof(*pool))) == NULL) {
+    if ((pool = (tp_pool_t *)calloc(1, sizeof(*pool))) == NULL) {
         return pool;
     }
 
@@ -985,7 +985,7 @@ tp_pool_t *tp_pool_new(int max_threads, int chan_size, ...) {
         goto fail0;
     }
 
-    pool->log = tp_log_new(TP_ERROR, TP_MODULE_NAME"-"TP_VERSION, 0);
+    pool->log = (tp_log_t *)tp_log_new(TP_ERROR, (char *)TP_MODULE_NAME"-"TP_VERSION, 0);
     if (pool->log == NULL) {
         goto fail;
     }
@@ -1029,9 +1029,9 @@ fail:
 
 static int tp_pool_task_add_core(tp_pool_t *pool, void *task_arg) {
     int            ms = pool->ms;
-    int            err, try;
+    int            err, ntry;
 
-    for (try = 3; try > 0; try--) {
+    for (ntry = 3; ntry > 0; ntry--) {
         err = tp_chan_send_timedwait(pool->task_chan, task_arg, ms);
         if (err == 0) {
             return err;
@@ -1163,7 +1163,7 @@ struct tp_plugin_arg_t {
 
 static tp_plugin_arg_t *plugin_arg_new(tp_pool_t *pool, tp_plugin_t *plugin, int type) {
     tp_plugin_arg_t *arg;
-    arg = malloc(sizeof(*arg));
+    arg = (tp_plugin_arg_t *)malloc(sizeof(*arg));
 
     if (arg == NULL)
         return arg;
@@ -1240,11 +1240,11 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
 
     if ((a->type & TP_PLUGIN_PRODUCER_EMPTY) ||
         (a->type & TP_PLUGIN_PRODUCER_GFUNC_EMPTY)) {
-        g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
+        g = (tp_vtable_global_arg_t *)tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g == NULL) {
-            g = calloc(1, sizeof(*g));
+            g = (tp_vtable_global_arg_t *)calloc(1, sizeof(*g));
             assert(g != NULL);
-            tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, g);
+            tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, (void *)g);
         }
 
         if (p->vtable.global_init != NULL)
@@ -1253,7 +1253,7 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
     }
     /* consumers wait for produces to produce ok */
     for (;;) {
-        g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
+        g = (tp_vtable_global_arg_t *)tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
         if (g != NULL) {
             /* produces to produce fail */
             if ((g->status & TP_PLUGIN_PRODUCER_GINIT_FAIL)
@@ -1296,7 +1296,7 @@ static int tp_pool_plugin_producer(tp_plugin_arg_t *a) {
     pthread_mutex_lock(&pool->plugin_lock);
 
     if (tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR) == NULL) {
-        g = calloc(1, sizeof(*g));
+        g = (tp_vtable_global_arg_t *)calloc(1, sizeof(*g));
         assert(g != NULL);
 
         err = p->vtable.global_init(g);
@@ -1304,7 +1304,7 @@ static int tp_pool_plugin_producer(tp_plugin_arg_t *a) {
             /* producer init fail */
             g->status |= TP_PLUGIN_PRODUCER_GINIT_FAIL;
         }
-        tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, g);
+        tp_hash_put(pool->plugins, p->plugin_name, TP_KEY_STR, (void *)g);
     }
 
     a->g = g;
@@ -1331,7 +1331,7 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
            p->vtable.global_destroy != NULL));
 
     pthread_mutex_lock(&pool->plugin_lock);
-    g = tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
+    g = (tp_vtable_global_arg_t *)tp_hash_get(pool->plugins, p->plugin_name, TP_KEY_STR);
     if (g == NULL) {
         goto done;
     }

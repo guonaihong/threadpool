@@ -27,7 +27,7 @@ struct tp_pool_t {
 
 static void tst_tp_pool_free_all_fail() {
     tp_pool_t       *pool;
-    pool = calloc(1, sizeof(*pool));
+    pool = (tp_pool_t *)calloc(1, sizeof(*pool));
     assert(pool != NULL);
     tp_pool_wait(pool, TP_FAST);
     tp_pool_free(pool);
@@ -35,10 +35,10 @@ static void tst_tp_pool_free_all_fail() {
 
 static void tst_tp_pool_free_only_log_ok() {
     tp_pool_t       *pool;
-    pool = calloc(1, sizeof(*pool));
+    pool = (tp_pool_t *)calloc(1, sizeof(*pool));
     assert(pool != NULL);
 
-    pool->log = tp_log_new(TP_ERROR, TP_MODULE_NAME""TP_VERSION, 0);
+    pool->log = tp_log_new(TP_ERROR, (char *)TP_MODULE_NAME""TP_VERSION, 0);
     assert(pool->log != NULL);
 
     tp_pool_wait(pool, TP_FAST);
@@ -47,10 +47,10 @@ static void tst_tp_pool_free_only_log_ok() {
 
 static void tst_tp_pool_free_log_chan_ok() {
     tp_pool_t       *pool;
-    pool = calloc(1, sizeof(*pool));
+    pool = (tp_pool_t *)calloc(1, sizeof(*pool));
     assert(pool != NULL);
 
-    pool->log = tp_log_new(TP_ERROR, TP_MODULE_NAME""TP_VERSION, 0);
+    pool->log = tp_log_new(TP_ERROR, (char *)TP_MODULE_NAME""TP_VERSION, 0);
     assert(pool->log != NULL);
 
     pool->task_chan = tp_chan_new(12);

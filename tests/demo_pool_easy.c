@@ -26,7 +26,7 @@ void *start_add_task(void *arg) {
     for (i = 0; i < TOTAL; i++) {
 
         /* Add tasks to the thread pool */
-        rv = tp_pool_add(pool, print1, "print1");
+        rv = tp_pool_add(pool, print1, (void *)"print1");
         if (rv != 0) {
             printf("id(%d) rv(%d) add print1 function to the thread pool timeout\n",
                    i, rv);
@@ -34,7 +34,7 @@ void *start_add_task(void *arg) {
         }
 
         /* Add tasks to the thread pool */
-        rv = tp_pool_add(pool, print2, "print2");
+        rv = tp_pool_add(pool, print2, (void *)"print2");
         if (rv != 0) {
             printf("id(%d) rv(%d) add print2 function to the thread pool timeout\n",
                    i, rv);

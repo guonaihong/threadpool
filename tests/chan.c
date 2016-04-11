@@ -13,12 +13,12 @@ static void tst_chan_send_timeout() {
     int        i, err;
 
     for (i = 1; i < 10; i++) {
-        p = "ok";
+        p = (char *)"ok";
         err = tp_chan_send_timedwait(chan, (void *)(intptr_t)i, 10/* ms */);
         if (err != 0) {
-            p = "unknown error";
+            p = (char *)"unknown error";
             if (err == ETIMEDOUT) {
-                p = "send timeout";
+                p = (char *)"send timeout";
             }
         }
 
@@ -41,12 +41,12 @@ static void tst_chan_recv_timeout() {
     char      *p;
 
     for (i = 0; i < 10; i++) {
-        p = "ok";
+        p = (char *)"ok";
         err = tp_chan_recv_timedwait(chan, &v, 10);
         if (err != 0) {
-            p = "unknown error";
+            p = (char *)"unknown error";
             if (err == ETIMEDOUT) {
-                p = "recv timeout";
+                p = (char *)"recv timeout";
             }
         }
         printf("(tst recv timeout)recv %d message, %s\n",

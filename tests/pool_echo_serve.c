@@ -47,29 +47,29 @@ static void producer_destroy(tp_vtable_child_arg_t *arg);
 static void producer_global_destroy(tp_vtable_global_arg_t *g);
 
 static tp_plugin_t producer = {
-    .vtable = {
-        .global_init = producer_global_init,
-        .create = producer_create,
-        .process = producer_process,
-        .destroy = producer_destroy,
-        .global_destroy = producer_global_destroy,
+    {
+        producer_global_init,
+        producer_create,
+        producer_process,
+        producer_destroy,
+        producer_global_destroy,
     },
-    .user_data   = "accept",
-    .plugin_name = TP_PLUGIN_NAME,
+    (void *)"accept",
+    TP_PLUGIN_NAME,
 };
 
 static int consumer_process(tp_vtable_child_arg_t *arg);
 
 static tp_plugin_t consumer = {
-    .vtable= {
-        .global_init = NULL,
-        .create = NULL,
-        .process = consumer_process,
-        .destroy = NULL,
-        .global_destroy = NULL,
+    {
+        NULL,
+        NULL,
+        consumer_process,
+        NULL,
+        NULL,
     },
-    .user_data   = "read write socket",
-    .plugin_name = TP_PLUGIN_NAME,
+    (void *)"read write socket",
+    TP_PLUGIN_NAME,
 };
 
 static void get_ns(uint64_t *u64) {
@@ -112,7 +112,7 @@ static int listen_new(unsigned ip, unsigned short port) {
 static int producer_global_init(tp_vtable_global_arg_t *g) {
     echo_server_t *s = NULL;
 
-    s = malloc(sizeof(*s));
+    s = (echo_server_t *)malloc(sizeof(*s));
     assert(s != NULL);
 
     s->chan = tp_chan_new(30);
@@ -167,7 +167,7 @@ static int accept_timedwait(int listen_fd, int sec) {
 /* listening socket */
 static int producer_process(tp_vtable_child_arg_t *arg) {
     tp_vtable_global_arg_t *g         = arg->global;
-    echo_server_t          *s         = g->producer_arg;
+    echo_server_t          *s         = (echo_server_t *)g->producer_arg;
     tp_chan_t              *chan      = s->chan;
     int                     connfd    = -1;
     int                     listen_fd = s->listen_fd;
@@ -216,7 +216,6 @@ static int producer_process(tp_vtable_child_arg_t *arg) {
     return 0;
 
 done:
-    close(listen_fd);
     return TP_PLUGIN_EXIT;
 }
 
@@ -225,7 +224,7 @@ static void producer_destroy(tp_vtable_child_arg_t *arg) {
 }
 
 static void producer_global_destroy(tp_vtable_global_arg_t *g) {
-    echo_server_t *s = g->producer_arg;
+    echo_server_t *s = (echo_server_t *)g->producer_arg;
     tp_chan_free(s->chan);
     close(s->listen_fd);
     free(s);
@@ -235,7 +234,7 @@ static void producer_global_destroy(tp_vtable_global_arg_t *g) {
 /* from the client to read and write data back */
 static int consumer_process(tp_vtable_child_arg_t *arg) {
     tp_vtable_global_arg_t  *g       = arg->global;
-    echo_server_t           *s       = g->producer_arg;
+    echo_server_t           *s       = (echo_server_t *)g->producer_arg;
     tp_chan_t               *chan    = s->chan;
     uint64_t                 id      = 0;
     void                    *val     = NULL;
@@ -321,7 +320,7 @@ int main() {
 
     tp_pool_t *server_pool, *client_pool;
 
-    mylog = tp_log_new(TP_INFO, "echo client", TP_LOG_LOCK);
+    mylog = tp_log_new(TP_INFO, (char *)"echo client", TP_LOG_LOCK);
     server_pool = tp_pool_new(30 /*max thread number*/, 30/* chan size */, 
             1/* min threads */, TP_AUTO_ADD | TP_AUTO_DEL, TP_NULL);
     assert(server_pool != NULL);

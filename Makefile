@@ -1,5 +1,6 @@
 CFLAGS = -D_REENTRANT -Wall -pedantic -Isrc
 
+CC = gcc
 OSNAME = $(shell uname)
 ifeq ($(OSNAME), Linux)
 LDLIBS = -lpthread -lm -lrt
@@ -25,8 +26,6 @@ tests/pool_echo_serve: tests/pool_echo_serve.o src/threadpool.o
 tests/list: tests/list.o src/threadpool.o
 tests/hash: tests/hash.o src/threadpool.o
 tests/api:  tests/api.o src/threadpool.o
-
-src/.o: src/threadpool.c src/threadpool.h
 
 src/threadpool.o: src/threadpool.c src/threadpool.h
 	    $(CC) -c ${CFLAGS} -o $@ $<
