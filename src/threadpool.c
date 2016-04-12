@@ -1305,13 +1305,13 @@ static int tp_pool_plugin_consumer(tp_plugin_arg_t *a) {
     }
 
 do_init:
-    if (p->vtable.global_init && g->c_ref_count == 0) {
+    if (p->vtable.global_init && ATOMIC_LOAD(&g->c_ref_count) == 0) {
         err = p->vtable.global_init(g);
         if (err != 0) {
             goto do_exit;
         }
     }
-    g->c_ref_count++;
+    ATOMIC_INC(&g->c_ref_count); /* g->c_ref_count++ */
 
 do_exit:
     a->g = g;
@@ -1351,7 +1351,7 @@ static int tp_pool_plugin_producer(tp_plugin_arg_t *a) {
     }
 
     pthread_cond_signal(&pool->new_wait);
-    g->p_ref_count++;
+    ATOMIC_INC(&g->p_ref_count); /* g->p_ref_count++ */
     return 0;
 }
 
@@ -1373,8 +1373,10 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
     }
 
     if (a->type == TP_PLUGIN_CONSUMER) {
-        g->c_ref_count = g->c_ref_count > 0 ? --g->c_ref_count : 0;
-        if (g->c_ref_count == 0) {
+        if (ATOMIC_LOAD(&g->c_ref_count) > 0) {
+            ATOMIC_DEC(&g->c_ref_count);
+        }
+        if (ATOMIC_LOAD(&g->c_ref_count) == 0) {
             pthread_cond_signal(&pool->free_wait);
             if (p->vtable.global_destroy) {
                 p->vtable.global_destroy(g);
@@ -1386,9 +1388,11 @@ static void tp_pool_plugin_global_destroy(tp_plugin_arg_t *a) {
         }
 
     } else if (a->type == TP_PLUGIN_PRODUCER){
-        g->p_ref_count = g->p_ref_count > 0 ? --g->p_ref_count : 0;
-        if (g->p_ref_count == 0) {
-            while (g->c_ref_count > 0) {
+        if (ATOMIC_LOAD(&g->p_ref_count) > 0) {
+            ATOMIC_DEC(&g->p_ref_count);
+        }
+        if (ATOMIC_LOAD(&g->p_ref_count) == 0) {
+            while (ATOMIC_LOAD(&g->c_ref_count) > 0) {
                 pthread_cond_wait(&pool->free_wait, &pool->plugin_lock);
             }
             if (p->vtable.global_destroy) {
