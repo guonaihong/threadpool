@@ -15,7 +15,14 @@
  * [给线程池添加plugin](#给线程池添加plugin)
  * [等待线程池](#等待线程池)
  * [释放线程池](#释放线程池)
-
+* example
+ * [创建一个固定的线程池](./tests/demo_pool_easy.c)
+ * [创建一个自动伸缩的线程池](./tests/demo_pool_auto_add_del_thread.c)
+ * [创建一个固定的plugin池](./tests/pool_echo_serve.c)
+* TODO
+ * 完善文档
+ * 修复bug,欢迎找bug
+ 
 ###### 创建线程池
 
 ```c
@@ -52,5 +59,3 @@ int tp_pool_wait(tp_pool_t *pool, int flags);
 int tp_pool_free(tp_pool_t *pool);
 ```
 
-TODO
- * 修复bug,欢迎找bug
