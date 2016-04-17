@@ -1,14 +1,23 @@
 [![Build Status](https://travis-ci.org/guonaihong/threadpool.svg?branch=master)](https://travis-ci.org/guonaihong/threadpool)
 
 # A very simple thread pool
+# Table of Contents
 
-目前已经实现的有:
+* Currently, the implementation
  * 最小化创建线程
  * 自动扩容与收缩线程
  * 一个通用的plugin模块
+* API
+ * [创建线程池](#创建线程池)
+ * [给线程池添加任务](#给线程池添加任务)
+ * [给线程池添加n个线程](#给线程池添加n个线程)
+ * [给线程池删除n个线程](#给线程池添加n个线程)
+ * [给线程池添加plugin](#给线程池添加plugin)
+ * [等待线程池](#等待线程池)
+ * [释放线程池](#释放线程池)
 
-> ### API 
 ###### 创建线程池
+
 ```c
 tp_pool_t *tp_pool_new(int max_threads, int chan_size, int tp_null); 
 tp_pool_t *tp_pool_new(int max_threads, int chan_size, int min_threads, int tp_null);
