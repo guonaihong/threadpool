@@ -61,6 +61,8 @@ int tp_chan_count(tp_chan_t *c);
 
 int tp_chan_wake(tp_chan_t *c);
 
+int tp_chan_full(tp_chan_t *c);
+
 int tp_chan_free(tp_chan_t *c);
 /*
  * log module
@@ -186,6 +188,8 @@ int tp_pool_wait(tp_pool_t *pool, int flags);
 
 int tp_pool_free(tp_pool_t *pool);
 
+int tp_pool_chan_full(tp_pool_t *c);
+
 
 /*
  * plugins module
@@ -233,7 +237,9 @@ int tp_pool_plugin_producer_consumer_add(tp_pool_t   *pool,
                                          tp_plugin_t *consumers,
                                          int          nc);
 
-int tp_pool_plugin_addn(tp_pool_t *pool, int n, tp_plugin_t *plugin, int type);
+int tp_pool_plugin_consumer_addn(tp_pool_t   *pool,
+                                 tp_plugin_t *consumers,
+                                 int          nc);
 #ifdef __cplusplus
 }
 #endif

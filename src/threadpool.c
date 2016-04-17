@@ -236,6 +236,10 @@ int tp_chan_count(tp_chan_t *c) {
     return ATOMIC_LOAD(&c->count);
 }
 
+int tp_chan_full(tp_chan_t *c) {
+    return ATOMIC_LOAD(&c->count) == c->size;
+}
+
 int tp_chan_wake(tp_chan_t *c) {
     if (c == NULL) {
         return -1;
@@ -760,6 +764,10 @@ static void tp_pool_thread_node_del(tp_pool_t *pool, tp_thread_arg_t *arg) {
     free(node);
 }
 
+int tp_pool_chan_full(tp_pool_t *pool) {
+    return tp_chan_full(pool->task_chan);
+}
+
 /* pool is empty returns true, false otherwise */
 int tp_pool_isempty(tp_pool_t *pool) {
     if (tp_chan_count(pool->task_chan) == 0
@@ -1059,7 +1067,7 @@ static int tp_pool_task_add_core(tp_pool_t *pool, void *task_arg) {
     int            ms = pool->ms;
     int            err, ntry;
 
-    for (ntry = 3; ntry > 0; ntry--) {
+    for (ntry = 2; ntry > 0; ntry--) {
         err = tp_chan_send_timedwait(pool->task_chan, task_arg, ms);
         if (err == 0) {
             return err;
@@ -1072,7 +1080,9 @@ static int tp_pool_task_add_core(tp_pool_t *pool, void *task_arg) {
                 return err;
             }
             /* add thread ok */
+            continue;
         }
+        break;
     }
 
     return err;
@@ -1461,4 +1471,10 @@ int tp_pool_plugin_producer_consumer_add(tp_pool_t   *pool,
         return rv;
     }
     return 0;
+}
+
+int tp_pool_plugin_consumer_addn(tp_pool_t   *pool,
+                                 tp_plugin_t *consumers,
+                                 int          nc) {
+    return tp_pool_plugin_producer_consumer_add(pool, NULL, 0, consumers, nc);
 }
