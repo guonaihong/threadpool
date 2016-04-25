@@ -14,7 +14,7 @@ ifdef DEBUG
 endif
 
 TARGETS = tests/log tests/chan tests/list tests/api tests/demo_pool_easy tests/demo_pool_auto_add_del_thread \
-		  tests/hash tests/pool_echo_serve
+		  tests/hash tests/pool_echo_serve tests/template
 
 all: $(TARGETS)
 
@@ -26,6 +26,7 @@ tests/pool_echo_serve: tests/pool_echo_serve.o src/threadpool.o
 tests/list: tests/list.o src/threadpool.o
 tests/hash: tests/hash.o src/threadpool.o
 tests/api:  tests/api.o src/threadpool.o
+tests/template: tests/template.o src/threadpool.o
 
 src/threadpool.o: src/threadpool.c src/threadpool.h
 	    $(CC) -c ${CFLAGS} -o $@ $<
