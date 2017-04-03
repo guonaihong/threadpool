@@ -1424,7 +1424,8 @@ static void tp_pool_plugin_main(void *arg) {
     tp_pool_t              *pool;
     int                     err;
 
-    a = (tp_plugin_arg_t *)arg;
+    err  = 0;
+    a    = (tp_plugin_arg_t *)arg;
     pool = a->self_pool;
 
     if (a->plugin->vtable.process == NULL) {

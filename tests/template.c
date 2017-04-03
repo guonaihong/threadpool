@@ -11,7 +11,6 @@
 #include <signal.h>
 #include <assert.h>
 #include <sys/time.h>
-#include <sys/inotify.h>
 
 #include "threadpool.h"
 
